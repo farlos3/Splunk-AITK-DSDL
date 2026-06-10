@@ -1,0 +1,101 @@
+name: splunkaitk
+
+services:
+  splunk:
+    image: splunk/splunk:latest
+    # Splunk publishes amd64 images only. On Apple Silicon (M1/M2/M3/M4)
+    # this forces Docker Desktop to run via Rosetta 2 emulation; on
+    # Windows/Linux x86 it's a no-op.
+    platform: linux/amd64
+    container_name: splunk-aitk
+    hostname: splunk-aitk
+    environment:
+      - SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_PASSWORD=${SPLUNK_PASSWORD:-p@ssw0rd}
+      - SPLUNK_HEC_TOKEN=${SPLUNK_HEC_TOKEN:-aitk-hec-token-CHANGE-ME}
+      # AITK/MLTK + PSC + DSDL are installed at first boot from the .tgz
+      # files you stage in ../splunk-apps/. setup.ps1 / setup.sh discovers
+      # them and writes this variable into docker/.env. The splunk-ansible
+      # entrypoint installs each archive (in listed order) into
+      # /opt/splunk/etc/apps. PSC must come before MLTK before DSDL.
+      - SPLUNK_APPS_URL=${SPLUNK_APPS_URL:-}
+    ports:
+      - "8000:8000"      # Web UI
+      - "8088:8088"      # HTTP Event Collector
+      - "8089:8089"      # Management API (DSDL containers call back here)
+      - "9997:9997"      # Forwarder receiver
+    volumes:
+      # Persistent Splunk config + state. /opt/splunk/etc holds the
+      # installed AITK/PSC/DSDL apps and DSDL's saved container config;
+      # /opt/splunk/var holds indexes and _internal logs. Both are
+      # provisioned on first boot when the named volume is empty, and
+      # survive `docker compose restart` / `reset` (killed only by `down -v`
+      # or reset -Full). Named volumes (not Windows bind mounts) so Splunk's
+      # validatedb is happy — same reasoning as the BOTS lab.
+      - splunk-etc:/opt/splunk/etc
+      - splunk-var:/opt/splunk/var
+      # BOTSv1 dataset for the DGA detection POC — this project's OWN volume
+      # (splunkaitk_splunk-botsv1), fully self-contained and independent of
+      # Splunk-Environment-Lab. Populated by setup.* from this repo's own
+      # bots-data/botsv1/ (downloaded there if absent). The mount target MUST
+      # be `botsv1_data_set` because the archive's indexes.conf hardcodes that
+      # app name in its bucket paths. An empty volume = empty app dir, which
+      # Splunk simply ignores.
+      - splunk-botsv1:/opt/splunk/etc/apps/botsv1_data_set
+      # App packages to auto-install. Read-only bind mount of small .tgz
+      # files is fine on Windows (ansible just untars them at boot; they're
+      # never mmap'd as index buckets, which is the case Docker Desktop's
+      # gRPC-FUSE share can't handle).
+      - ../splunk-apps:/tmp/apps:ro
+      # NOTE: we deliberately do NOT mount /var/run/docker.sock here. The
+      # splunk process runs as uid 41812 and can't read the root-owned
+      # socket ("Permission denied" in DSDL's Test & Save). Instead DSDL
+      # talks to the docker-proxy service below over TCP. In the DSDL Setup
+      # page use Docker Host:  tcp://docker-proxy:2375
+    restart: unless-stopped
+    depends_on:
+      - docker-proxy
+    healthcheck:
+      test: ["CMD", "curl", "-fks", "https://localhost:8089/services/server/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
+  # Filtered, read-mostly gateway to the host Docker daemon. It runs as root
+  # (so it CAN read the socket) and exposes a scoped HTTP Docker API on
+  # tcp://docker-proxy:2375, reachable by the splunk container over the
+  # compose network. This sidesteps the socket-permission problem entirely
+  # and only allows the API groups DSDL needs (create/start/stop containers,
+  # pull images, inspect networks/volumes). The DSDL-spawned model containers
+  # still run on the HOST Docker as siblings; Splunk reaches their published
+  # ports via Endpoint URL = host.docker.internal.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: dsdl-docker-proxy
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORKS=1
+      - VOLUMES=1
+      - INFO=1
+      - VERSION=1
+      - EXEC=1
+      - POST=1          # allow write ops (create/start/stop/remove); default is read-only
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+# Predictable network name so the splunk container can resolve the
+# docker-proxy by name, and so a DSDL-spawned container can optionally join
+# it. In the DSDL Setup page, set the container network to "splunk-dsdl"
+# only if you later need container<->container name resolution.
+networks:
+  default:
+    name: splunk-dsdl
+
+volumes:
+  splunk-etc:
+  splunk-var:
+  splunk-botsv1:
