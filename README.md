@@ -190,7 +190,8 @@ Splunk-AITK-DSDL/
 │   ├── .env.example            ← template for the generated docker/.env
 │   └── reset.ps1 / reset.sh     ← nuke container + state; -Full also wipes BOTSv1
 ├── docs/
-│   └── SETUP.md                ← full step-by-step setup guide (start here)
+│   ├── SETUP.md                ← full step-by-step setup guide (start here)
+│   └── DSDL-SETTINGS.md        ← field-by-field reference for the DSDL Setup page
 ├── splunk-apps/                ← stage Splunkbase .tgz here (gitignored payloads)
 │   └── README.md               ← which apps to download + direct links
 ├── bots-data/botsv1/           ← BOTSv1 staging (download + extract live here)

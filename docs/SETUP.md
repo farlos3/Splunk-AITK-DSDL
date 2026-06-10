@@ -159,6 +159,10 @@ Leave Kubernetes, Observability, Splunk Access, and Splunk HEC at their
 defaults (`No`/empty) for the POC. Tick **"I fully understand the potential
 data and security risks…"** and click **Test & Save**.
 
+> For a **field-by-field reference of every option on this page** (including
+> the optional Splunk Access / HEC sections), see
+> [`DSDL-SETTINGS.md`](DSDL-SETTINGS.md).
+
 **Why these values** (this is the non-obvious part):
 
 - Splunk runs *inside* a container as uid 41812 and **cannot read the
