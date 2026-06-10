@@ -196,7 +196,8 @@ Splunk-AITK-DSDL/
 ├── docs/
 │   ├── SETUP.md                ← full step-by-step setup guide (start here)
 │   ├── DSDL-SETTINGS.md        ← field-by-field reference for the DSDL Setup page
-│   └── JUPYTER.md              ← using JupyterLab: notebook→algorithm, dev loop
+│   ├── JUPYTER.md              ← using JupyterLab: notebook→algorithm, dev loop
+│   └── AI-Usage-Flow.pdf       ← AITK vs DSDL flow explainer (printable)
 ├── splunk-apps/                ← stage Splunkbase .tgz here (gitignored payloads)
 │   └── README.md               ← which apps to download + direct links
 ├── bots-data/botsv1/           ← BOTSv1 staging (download + extract live here)

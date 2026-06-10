@@ -19,9 +19,10 @@ plain run only starts the API). It's already up if `docker ps` shows
 
 Open: **`https://localhost:8888`**  ← **HTTPS, not http**
 
-- It serves **HTTPS** (self-signed dev cert). `http://localhost:8888` gives
-  *"localhost didn't send any data"* — that's the #1 gotcha. Use `https://`
-  and click through the browser's certificate warning (Advanced → Proceed).
+- It serves **HTTPS** (self-signed dev cert). Plain `http://localhost:8888`
+  gives *"localhost didn't send any data"* — that's the #1 gotcha. Use
+  `https://` and click through the browser's certificate warning
+  (Advanced → Proceed).
 - **Password:** `splunkdsdl` (set via `JUPYTER_PASSWD` in the compose file;
   change it there if you like).
 
@@ -40,21 +41,31 @@ Open: **`https://localhost:8888`**  ← **HTTPS, not http**
 
 ## 2. How DSDL maps notebooks → searchable algorithms
 
-This is the key mental model. Inside the container:
+This is the key mental model. The tree below is **expanded for clarity** — in
+the JupyterLab file browser the root `/srv` only shows the top-level folders
+(`app`, `mlruns`, `notebooks`, `notebooks_backup_5.2.0`, `README.md`,
+`version.md`); **double-click into a folder** to see its files.
 
 ```
 /srv/                              ← the mltk-container-data volume (persists)
-├── notebooks/
-│   ├── barebone_template.ipynb    ← copy this to start a new model
-│   ├── dga_neural_network.ipynb   ← your model notebook
-│   └── data/
-│       ├── <name>.csv             ← data Splunk staged for you (dev)
-│       └── <name>.json            ← the params Splunk sent
+├── notebooks/                     ← ~40 example notebooks ship here, incl:
+│   ├── barebone_template.ipynb        copy this to start a new model
+│   ├── dga_train.ipynb                a built-in DGA example (bonus!)
+│   ├── detect_dns_data_exfiltration_using_pretrained_model_in_dsdl.ipynb
+│   ├── dga_neural_network.ipynb       ← YOUR notebook — not here until you add it
+│   └── data/                          staged data + sample train.csv/test.csv
+│       ├── <name>.csv                 data Splunk staged for you (dev)
+│       └── <name>.json                the params Splunk sent
 └── app/
     └── model/
         ├── <name>.py              ← compiled from the notebook's tagged cells
         └── data/<name>/           ← saved/trained models (from save())
 ```
+
+> The golden image bundles ready-made examples — including **`dga_train.ipynb`**
+> and `detect_dns_data_exfiltration_*` with sample DGA data — so you can study
+> DSDL's own DGA approach before (or instead of) loading this repo's
+> `dga_neural_network.ipynb`.
 
 - A search `... | fit MLTKContainer algo=dga_neural_network ...` calls
   **`/srv/app/model/dga_neural_network.py`**.
