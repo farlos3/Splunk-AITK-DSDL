@@ -100,8 +100,8 @@ What it does, in order:
    volume — downloads the ~6 GB archive into `bots-data/botsv1/` if it isn't
    there already (self-contained; never reads from `Splunk-Environment-Lab`).
 5. **`docker compose up -d`** and wait for Splunk to report healthy. The same
-  compose run also starts the golden container as `mltk-dry2`, so it appears
-  under the `splunkaitk` stack in Docker Desktop.
+  compose run also starts the golden container as `mltk-dev` (DEV mode, so it
+  runs JupyterLab), grouped under the `splunkaitk` stack in Docker Desktop.
 6. Print the values to enter on the DSDL Setup page (step 5 below).
 
 Useful flags (same idea for `--flag` in bash):
@@ -119,8 +119,8 @@ run the full `.\setup.ps1` later for the golden image + data.
 
 **Success looks like:** the script ends with "Splunk AITK + DSDL POC is up"
 and <http://localhost:8000> loads (login `admin` / your password from
-`docker/.env`, default `p@ssw0rd`). You should also see `mltk-dry2` running
-under the same compose stack.
+`docker/.env`, default `p@ssw0rd`). You should also see `mltk-dev` running
+under the same compose stack (JupyterLab at `https://localhost:8888`).
 
 Confirm the containers and data:
 
@@ -189,17 +189,26 @@ data and security risks…"** and click **Test & Save**.
 
 ---
 
-## 6. Use the model container
+## 6. Open the model container / JupyterLab
 
-1. DSDL → **Configuration → Containers** (or the **Containers** menu).
-2. Confirm the **golden-cpu** image is already running as `mltk-dry2`. The
-  setup script pre-pulls `splunk/mltk-container-golden-cpu:5.2.3` and starts
-  the container with the compose stack.
-3. Click **JupyterLab** — it opens on `localhost:8888` (password from the
-  Setup page's Password Settings, or the default shown there).
+The golden image runs as the **compose service `mltk-dev`** in DEV mode — it
+starts with the stack, so you do **not** start one from the DSDL Containers
+page (that would collide on ports 5000/8888).
 
-**Success looks like:** `docker ps` shows `mltk-dry2` under the same
-`splunkaitk` stack, and JupyterLab opens in the browser.
+1. Confirm it's up: `docker ps` shows `mltk-dev` with
+   `0.0.0.0:8888->8888` and `0.0.0.0:5000->5000`.
+2. Open **`https://localhost:8888`** — **HTTPS, not http** (it serves a
+   self-signed cert; click through the browser warning). Plain
+   `http://localhost:8888` returns *"didn't send any data"*.
+3. Log in with password **`splunkdsdl`** (set via `JUPYTER_PASSWD` in the
+   compose file).
+
+**Success looks like:** `docker ps` shows `mltk-dev` under the `splunkaitk`
+stack, and `https://localhost:8888` loads the JupyterLab login.
+
+> `fit/apply MLTKContainer` reaches this same container's `:5000` API via the
+> Endpoint URL (`host.docker.internal`) you saved in step 5 — one container
+> serves both Jupyter and the model API.
 
 > How to actually work in JupyterLab (the notebook→algorithm model, the
 > dev loop, loading the DGA notebook): [`JUPYTER.md`](JUPYTER.md).

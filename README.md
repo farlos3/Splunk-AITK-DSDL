@@ -36,25 +36,26 @@ a reset script, and a `.gitignore` that keeps the big/secret stuff out.
 │   apps: Python-for-Scientific-Computing → AITK/MLTK → DSDL                 │
 │   Web :8000   HEC :8088   Mgmt :8089   Fwd :9997                           │
 │                                                                            │
-│   `| fit MLTKContainer ...`  ──pushes data──▶  mltk-dry2 :5000             │
+│   `| fit MLTKContainer ...`  ──pushes data──▶  mltk-dev :5000 (HTTPS)      │
 │            ▲                                          │                     │
 │            └────────────── results ──────────────────┘                     │
 └───────────────┬───────────────────────────────────────────────────────────┘
-                │ Docker Compose starts the golden-image container in the
-                │ same `splunkaitk` stack, while DSDL still talks to Docker
-                │ via the proxy sidecar.
+                │ DSDL POSTs to Endpoint URL host.docker.internal:5000.
+                │ Compose runs the golden container itself (no DSDL spawn).
                 ▼
-        Compose-managed model container `mltk-dry2`
+        Compose-managed model container `mltk-dev`  (MODE_DEV_PROD=DEV)
           image: splunk/mltk-container-golden-cpu
-          :5000 model API   :8888 JupyterLab   :6006 TensorBoard
+          :5000 model API (HTTPS)   :8888 JupyterLab (HTTPS)   :6006 TensorBoard
 ```
 
 DSDL doesn't run your model *inside* Splunk — it streams search results to
 the **golden image** container's `:5000` API and gets predictions back.
-JupyterLab (`:8888`) is where you develop the model code interactively.
-Because Splunk itself runs in a container here, the compose file also starts
-the golden container as `mltk-dry2` so Docker Desktop groups it with the
-rest of the `splunkaitk` stack.
+JupyterLab (`:8888`) is where you develop the model code interactively. This
+lab runs the golden container as the compose service **`mltk-dev`** in DEV
+mode (which is what starts JupyterLab) so it's always available and grouped
+under the `splunkaitk` stack. Open JupyterLab at **`https://localhost:8888`**
+(HTTPS — password `splunkdsdl`); the `docker-proxy` sidecar is only there so
+DSDL's *Test & Save* can validate the Docker connection.
 
 ## Prerequisites
 
@@ -125,8 +126,10 @@ Configuration → Setup**, choose **Docker**, and enter:
 | Check Hostname (Certificate Settings) | `Disabled` |
 
 Tick **"I fully understand the potential data and security risks…"**, then
-click **Test & Save**. Then go to **Containers**, start the **golden-image**
-container, and open **JupyterLab** to confirm the round trip works.
+click **Test & Save**. The golden container is already running (compose
+service `mltk-dev`), so you do **not** start one from the DSDL Containers
+page. Open JupyterLab at **`https://localhost:8888`** (HTTPS — password
+`splunkdsdl`) to confirm, then run `fit/apply` (Step 4).
 
 > **Why `tcp://docker-proxy:2375` and not `unix://var/run/docker.sock`?**
 > Splunk runs in a container as uid 41812 and can't read the root-owned

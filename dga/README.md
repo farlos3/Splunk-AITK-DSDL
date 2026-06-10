@@ -39,9 +39,11 @@ Files here:
 
 ## Step 1 — Load the model notebook into the container
 
-Open **JupyterLab** from the DSDL Containers page (port 8888; DSDL shows the
-token). DSDL turns the tagged cells of a notebook named `<algo>.ipynb` into
-`/srv/app/model/<algo>.py`, which is what `algo=<algo>` then calls.
+Open **JupyterLab** at **`https://localhost:8888`** (HTTPS — password
+`splunkdsdl`; it's the compose-managed `mltk-dev` container, see
+[`../docs/JUPYTER.md`](../docs/JUPYTER.md)). Saving a notebook named
+`<algo>.ipynb` auto-converts its tagged cells into `/srv/app/model/<algo>.py`,
+which is what `algo=<algo>` then calls.
 
 Easiest path that works on every DSDL build:
 

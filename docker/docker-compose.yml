@@ -67,23 +67,6 @@ services:
       retries: 5
       start_period: 180s
 
-  # Compose-managed copy of the DSDL golden image so Docker Desktop groups it
-  # under the same `splunkaitk` stack as Splunk itself. DSDL can still use the
-  # running container for the model API / JupyterLab round trip.
-  mltk-dry2:
-    image: ${GOLDEN_IMAGE:-splunk/mltk-container-golden-cpu:5.2.3}
-    platform: linux/amd64
-    container_name: mltk-dry2
-    hostname: mltk-dry2
-    ports:
-      - "5000:5000"      # Model API
-      - "8888:8888"      # JupyterLab
-      - "6006:6006"      # TensorBoard
-    volumes:
-      # Matches the upstream local-run example for the golden image.
-      - mltk-container-data:/srv
-    restart: unless-stopped
-
   # Filtered, read-mostly gateway to the host Docker daemon. It runs as root
   # (so it CAN read the socket) and exposes a scoped HTTP Docker API on
   # tcp://docker-proxy:2375, reachable by the splunk container over the
@@ -106,6 +89,33 @@ services:
       - POST=1          # allow write ops (create/start/stop/remove); default is read-only
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  # DSDL "golden image" model + JupyterLab dev container, managed by compose
+  # so it's always available and predictable (instead of relying on DSDL's
+  # Containers page to spawn one). It runs in DEV mode (MODE_DEV_PROD=DEV),
+  # which is what makes the golden image start JupyterLab — a plain run only
+  # starts the API. It serves, all over HTTPS (self-signed dev cert):
+  #   :5000  model API   -> DSDL fit/apply target (Endpoint URL host.docker.internal)
+  #   :8888  JupyterLab  -> open https://localhost:8888  (HTTPS! not http)
+  #   :6006  TensorBoard
+  # Because compose runs this, do NOT also "Start" a container from the DSDL
+  # Containers page — it would collide on ports 5000/8888.
+  mltk-dev:
+    image: ${GOLDEN_IMAGE:-splunk/mltk-container-golden-cpu:5.2.3}
+    platform: linux/amd64
+    container_name: mltk-dev
+    environment:
+      - MODE_DEV_PROD=DEV
+      # Jupyter password is "splunkdsdl" (this is the sha1 hash of it).
+      # Override by setting JUPYTER_PASSWD to another hash in docker/.env.
+      - JUPYTER_PASSWD=${JUPYTER_PASSWD:-sha1:6a98ab1ca809:71198af5aadebf82c8416ed926141b46392716ea}
+    ports:
+      - "5000:5000"      # model API (HTTPS)
+      - "8888:8888"      # JupyterLab (HTTPS)
+      - "6006:6006"      # TensorBoard
+    volumes:
+      - mltk-container-data:/srv
     restart: unless-stopped
 
 # Predictable network name so the splunk container can resolve the

@@ -4,25 +4,37 @@ How to develop and run models in the DSDL "golden image" container through
 JupyterLab. This is where the Python/TensorFlow code actually lives; Splunk
 just streams data to it and reads results back.
 
-> Prereqs: the lab is up ([`SETUP.md`](SETUP.md)), the DSDL Setup page is
-> saved ([`DSDL-SETTINGS.md`](DSDL-SETTINGS.md)), and you've started the
-> golden-cpu container from **DSDL → Containers**.
+> Prereqs: the lab is up ([`SETUP.md`](SETUP.md)) and the DSDL Setup page is
+> saved ([`DSDL-SETTINGS.md`](DSDL-SETTINGS.md)). The golden container runs as
+> the compose service **`mltk-dev`** (no need to start one from DSDL).
 
 ---
 
 ## 1. Open JupyterLab
 
-DSDL → **Containers** → on the running golden-cpu row click **JupyterLab**
-(or browse to `http://localhost:8888`). Log in with the **Jupyter Password**
-you set on the Setup page (or the default it shows there).
+In this lab the golden image runs as the compose-managed container
+**`mltk-dev`** in **DEV mode** — that's what makes it launch JupyterLab (a
+plain run only starts the API). It's already up if `docker ps` shows
+`mltk-dev` with `0.0.0.0:8888->8888`.
 
-The container also exposes:
+Open: **`https://localhost:8888`**  ← **HTTPS, not http**
+
+- It serves **HTTPS** (self-signed dev cert). `http://localhost:8888` gives
+  *"localhost didn't send any data"* — that's the #1 gotcha. Use `https://`
+  and click through the browser's certificate warning (Advanced → Proceed).
+- **Password:** `splunkdsdl` (set via `JUPYTER_PASSWD` in the compose file;
+  change it there if you like).
 
 | URL | What |
 |---|---|
-| `http://localhost:8888` | JupyterLab — develop notebooks |
+| `https://localhost:8888` | JupyterLab — develop notebooks (HTTPS!) |
 | `https://localhost:5000` | the model API (Splunk calls this; you don't open it) |
-| `http://localhost:6006` | TensorBoard (if a model writes TB logs) |
+| `http://localhost:6006` | TensorBoard (plain HTTP) |
+
+> **Don't** also "Start" a container from the DSDL Containers page — compose
+> already runs `mltk-dev` on ports 5000/8888/6006, and a second container
+> would collide on those ports. DSDL's `fit/apply` reaches `mltk-dev` via the
+> Endpoint URL (`host.docker.internal:5000`) you saved on the Setup page.
 
 ---
 
