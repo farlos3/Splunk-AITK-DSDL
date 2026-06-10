@@ -21,6 +21,7 @@ docker/.env
 # way the dataset is huge; keep the folder + .gitkeep, block the payload.
 # -----------------------------------------------------------------------------
 bots-data/**
+!bots-data/README.md
 !bots-data/botsv1/
 !bots-data/botsv1/.gitkeep
 
