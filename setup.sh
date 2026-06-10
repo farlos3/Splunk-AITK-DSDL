@@ -187,6 +187,13 @@ fi
 
 # --- 5. Bring Splunk up ----------------------------------------------------
 step "Starting Splunk container"
+if docker inspect "$CONTAINER" >/dev/null 2>&1; then
+    existing_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$CONTAINER" 2>/dev/null || true)"
+    if [ -n "$existing_project" ] && [ "$existing_project" != "splunkaitk" ]; then
+        info "Removing existing standalone $CONTAINER so compose can recreate it under the splunkaitk stack"
+        docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+    fi
+fi
 if [ "$FORCE" -eq 1 ]; then
     docker compose -f "$(to_winpath "$COMPOSE_FILE")" up -d --force-recreate
 else
@@ -228,6 +235,9 @@ cat <<EOF
   Username : admin
   Password : $PASSWORD
 
+The compose file also starts the golden container as `mltk-dry2`, so Docker
+Desktop should show it under the same `splunkaitk` stack.
+
 Next: open DSDL -> Configuration -> Setup and enter (Docker mode):
   Container Environment : Docker
   Docker Host           : tcp://docker-proxy:2375
@@ -236,7 +246,8 @@ Next: open DSDL -> Configuration -> Setup and enter (Docker mode):
   Check Hostname        : Disabled   (under Certificate Settings)
   (tick the risk checkbox, then click Test & Save)
 
-Then DSDL -> Containers -> start the golden-image container and open JupyterLab.
+Then DSDL -> Containers -> confirm the golden-image container is running and
+open JupyterLab.
 
 DGA detection POC walkthrough (botsv1 DNS): see dga/README.md
 EOF

@@ -58,6 +58,10 @@ Easiest path that works on every DSDL build:
 `dga_neural_network.ipynb` into `/srv/notebooks/` and use DSDL's
 notebook→python conversion; the cell tags are already correct.)
 
+> New to the JupyterLab side of DSDL — the notebook→algorithm mapping, the
+> `# mltkc_*` cell contract, and the stage/iterate/fit dev loop? See
+> [`../docs/JUPYTER.md`](../docs/JUPYTER.md).
+
 ## Step 2 — Make the labeled training set a lookup
 
 Quick way — copy the CSV straight into the search app's lookups (run from

@@ -1,0 +1,184 @@
+# Using JupyterLab in DSDL
+
+How to develop and run models in the DSDL "golden image" container through
+JupyterLab. This is where the Python/TensorFlow code actually lives; Splunk
+just streams data to it and reads results back.
+
+> Prereqs: the lab is up ([`SETUP.md`](SETUP.md)), the DSDL Setup page is
+> saved ([`DSDL-SETTINGS.md`](DSDL-SETTINGS.md)), and you've started the
+> golden-cpu container from **DSDL → Containers**.
+
+---
+
+## 1. Open JupyterLab
+
+DSDL → **Containers** → on the running golden-cpu row click **JupyterLab**
+(or browse to `http://localhost:8888`). Log in with the **Jupyter Password**
+you set on the Setup page (or the default it shows there).
+
+The container also exposes:
+
+| URL | What |
+|---|---|
+| `http://localhost:8888` | JupyterLab — develop notebooks |
+| `https://localhost:5000` | the model API (Splunk calls this; you don't open it) |
+| `http://localhost:6006` | TensorBoard (if a model writes TB logs) |
+
+---
+
+## 2. How DSDL maps notebooks → searchable algorithms
+
+This is the key mental model. Inside the container:
+
+```
+/srv/                              ← the mltk-container-data volume (persists)
+├── notebooks/
+│   ├── barebone_template.ipynb    ← copy this to start a new model
+│   ├── dga_neural_network.ipynb   ← your model notebook
+│   └── data/
+│       ├── <name>.csv             ← data Splunk staged for you (dev)
+│       └── <name>.json            ← the params Splunk sent
+└── app/
+    └── model/
+        ├── <name>.py              ← compiled from the notebook's tagged cells
+        └── data/<name>/           ← saved/trained models (from save())
+```
+
+- A search `... | fit MLTKContainer algo=dga_neural_network ...` calls
+  **`/srv/app/model/dga_neural_network.py`**.
+- That `.py` is **generated from the notebook** `dga_neural_network.ipynb`
+  by extracting the cells tagged with the magic comments
+  `# mltkc_import`, `# mltkc_init`, `# mltkc_fit`, `# mltkc_apply`,
+  `# mltkc_save`, `# mltkc_load`, `# mltkc_summary`.
+- The conversion runs **on notebook save** (a Jupyter save hook). So the loop
+  is: *edit cells → Save → the `.py` is rebuilt → re-run your search.*
+
+Only code inside the tagged cells becomes part of the model. Scratch cells
+(plots, `print`, experiments) are ignored by the compiler — handy for
+iterating.
+
+### The seven functions DSDL calls
+
+| Cell tag | Function | When it runs |
+|---|---|---|
+| `# mltkc_import` | imports | always (top of module) |
+| `# mltkc_init` | `init(df, param)` | build/return the model object |
+| `# mltkc_fit` | `fit(model, df, param)` | train; return summary info |
+| `# mltkc_apply` | `apply(model, df, param)` | score; return a DataFrame |
+| `# mltkc_save` | `save(model, name)` | persist after fit |
+| `# mltkc_load` | `load(name)` | reload before apply |
+| `# mltkc_summary` | `summary(model)` | `| summary algo=...` |
+
+`param` carries the search options — `param['options']['params']` (your
+`epochs=`, etc.), plus `feature_variables` / `target_variables` (the
+`X from Y` fields).
+
+---
+
+## 3. The development loop
+
+### a) Stage real data from Splunk into the notebook
+
+From the Splunk search bar, `mode=stage` sends the data + params to the
+container and writes `notebooks/data/<name>.{csv,json}` **without training**:
+
+```spl
+| inputlookup dga_training_domains.csv
+| fit MLTKContainer mode=stage algo=dga_neural_network epochs=25 is_dga from domain into app:dga_model
+```
+
+### b) Iterate in JupyterLab
+
+Open the notebook and use the dev-only `stage()` helper to load exactly what
+Splunk sent, then run the functions by hand:
+
+```python
+df, param = stage("dga_neural_network")
+model = init(df, param)
+print(fit(model, df, param))      # trains; watch loss/accuracy
+print(apply(model, df.head(20), param))
+print(summary(model))
+```
+
+Tweak the model cells, re-run, repeat. This is normal interactive Jupyter —
+no Splunk round trip needed while experimenting.
+
+### c) Save → run for real from Splunk
+
+When happy, **Save** the notebook (rebuilds the `.py`), then from Splunk:
+
+```spl
+# train + persist the model
+| inputlookup dga_training_domains.csv
+| fit MLTKContainer algo=dga_neural_network epochs=25 is_dga from domain into app:dga_model
+
+# score new data
+index=botsv1 sourcetype=stream:dns message_type=Query
+| eval domain=lower(mvindex('query{}',0))
+| stats count by domain
+| apply dga_model
+```
+
+---
+
+## 4. Loading the DGA notebook (this repo)
+
+Two ways to get [`dga/dga_neural_network.ipynb`](../dga/dga_neural_network.ipynb)
+into the container:
+
+- **Recommended:** in JupyterLab, **copy `barebone_template.ipynb` →
+  `dga_neural_network.ipynb`**, then paste each `# mltkc_*` cell from this
+  repo's notebook over the template's matching cell. Save. (This guarantees
+  the save-hook plumbing is wired up.)
+- **Or** drag-and-drop / upload `dga_neural_network.ipynb` into
+  `/srv/notebooks/` via the JupyterLab file browser; the cell tags are
+  already correct. If the `.py` isn't generated, open the notebook and Save
+  once to trigger the hook.
+
+Full train/score walkthrough: [`dga/README.md`](../dga/README.md).
+
+---
+
+## 5. Talking to Splunk *from* the notebook (optional)
+
+These need the matching sections enabled on the DSDL Setup page (see
+[`DSDL-SETTINGS.md`](DSDL-SETTINGS.md) §6–7) and a **container restart**
+afterwards.
+
+- **Pull data with the interactive search bar** — `barebone_template`
+  includes a Splunk search widget that uses the Python SDK. Requires
+  **Splunk Access** = enabled (token + `host.docker.internal:8089`).
+- **Push results back** — the `SplunkHEC` helper in the template posts events
+  to Splunk's HEC. Requires **Splunk HEC** = enabled (token +
+  `https://host.docker.internal:8088`).
+
+For the DGA POC neither is required — `fit`/`apply` move the data for you.
+
+---
+
+## 6. TensorBoard (optional)
+
+If a model writes TensorBoard logs (e.g. via a Keras `TensorBoard` callback
+pointing at `/srv/notebooks/logs` or `/srv/tensorboard`), open
+`http://localhost:6006`. The current DGA notebook doesn't enable TB; add a
+callback in `fit()` if you want training curves.
+
+---
+
+## 7. Persistence & gotchas
+
+- **Notebooks and saved models persist** — `/srv` is backed by the
+  `mltk-container-data` Docker volume, so they survive stopping/starting the
+  golden container. They are **not** in this git repo (they live in the
+  volume); keep your authored notebook in `dga/` and re-upload if you wipe
+  the volume.
+- **A stopped container can't be searched** — `fit`/`apply` fail if the
+  golden container isn't running. Start it from DSDL → Containers.
+- **Edited a notebook but the search still runs old code?** You forgot to
+  **Save** (the `.py` only regenerates on save). Save and re-run.
+- **`mode=stage` then nothing happens** — that's expected; stage only writes
+  `data/<name>.{csv,json}` for dev. Run without `mode=stage` to actually
+  train.
+- **Restarting after changing env (passwords / Splunk Access / HEC)** — stop
+  & start the container from DSDL, don't `docker restart` it; DSDL recreates
+  it with the new environment.

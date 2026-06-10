@@ -99,7 +99,9 @@ What it does, in order:
 4. **Populate BOTSv1** into this project's own `splunkaitk_splunk-botsv1`
    volume — downloads the ~6 GB archive into `bots-data/botsv1/` if it isn't
    there already (self-contained; never reads from `Splunk-Environment-Lab`).
-5. **`docker compose up -d`** and wait for Splunk to report healthy.
+5. **`docker compose up -d`** and wait for Splunk to report healthy. The same
+  compose run also starts the golden container as `mltk-dry2`, so it appears
+  under the `splunkaitk` stack in Docker Desktop.
 6. Print the values to enter on the DSDL Setup page (step 5 below).
 
 Useful flags (same idea for `--flag` in bash):
@@ -117,7 +119,8 @@ run the full `.\setup.ps1` later for the golden image + data.
 
 **Success looks like:** the script ends with "Splunk AITK + DSDL POC is up"
 and <http://localhost:8000> loads (login `admin` / your password from
-`docker/.env`, default `p@ssw0rd`).
+`docker/.env`, default `p@ssw0rd`). You should also see `mltk-dry2` running
+under the same compose stack.
 
 Confirm the containers and data:
 
@@ -186,18 +189,20 @@ data and security risks…"** and click **Test & Save**.
 
 ---
 
-## 6. Start the model container
+## 6. Use the model container
 
 1. DSDL → **Configuration → Containers** (or the **Containers** menu).
-2. Pick the **golden-cpu** image and click **Start**. (The setup script
-   pre-pulled `splunk/mltk-container-golden-cpu:5.2.3`. If the UI wants a
-   slightly different tag, let it pull.)
-3. Wait for status **running**, then click **JupyterLab** — it opens on
-   `localhost:8888` (password from the Setup page's Password Settings, or the
-   default shown there).
+2. Confirm the **golden-cpu** image is already running as `mltk-dry2`. The
+  setup script pre-pulls `splunk/mltk-container-golden-cpu:5.2.3` and starts
+  the container with the compose stack.
+3. Click **JupyterLab** — it opens on `localhost:8888` (password from the
+  Setup page's Password Settings, or the default shown there).
 
-**Success looks like:** `docker ps` now shows an extra `mltk-container-*`
-container, and JupyterLab opens in the browser.
+**Success looks like:** `docker ps` shows `mltk-dry2` under the same
+`splunkaitk` stack, and JupyterLab opens in the browser.
+
+> How to actually work in JupyterLab (the notebook→algorithm model, the
+> dev loop, loading the DGA notebook): [`JUPYTER.md`](JUPYTER.md).
 
 ---
 

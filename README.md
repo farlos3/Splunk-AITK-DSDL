@@ -36,24 +36,25 @@ a reset script, and a `.gitignore` that keeps the big/secret stuff out.
 │   apps: Python-for-Scientific-Computing → AITK/MLTK → DSDL                 │
 │   Web :8000   HEC :8088   Mgmt :8089   Fwd :9997                           │
 │                                                                            │
-│   `| fit MLTKContainer ...`  ──pushes data──▶  golden container :5000      │
+│   `| fit MLTKContainer ...`  ──pushes data──▶  mltk-dry2 :5000             │
 │            ▲                                          │                     │
 │            └────────────── results ──────────────────┘                     │
 └───────────────┬───────────────────────────────────────────────────────────┘
-                │ DSDL talks to the Docker daemon via the mounted socket
-                │   /var/run/docker.sock   (Docker Host: unix://var/run/docker.sock)
+                │ Docker Compose starts the golden-image container in the
+                │ same `splunkaitk` stack, while DSDL still talks to Docker
+                │ via the proxy sidecar.
                 ▼
-        Host Docker (Docker Desktop)  ── spins up sibling container ──▶
-        golden image  splunk/mltk-container-golden-cpu
+        Compose-managed model container `mltk-dry2`
+          image: splunk/mltk-container-golden-cpu
           :5000 model API   :8888 JupyterLab   :6006 TensorBoard
 ```
 
-DSDL doesn't run your model *inside* Splunk — it asks the Docker daemon to
-launch the **golden image** container, streams search results to its
-`:5000` API, and gets predictions back. JupyterLab (`:8888`) is where you
-develop the model code interactively. Because Splunk itself runs in a
-container here, we mount the host's Docker socket so DSDL can spawn those
-sibling containers on the host Docker.
+DSDL doesn't run your model *inside* Splunk — it streams search results to
+the **golden image** container's `:5000` API and gets predictions back.
+JupyterLab (`:8888`) is where you develop the model code interactively.
+Because Splunk itself runs in a container here, the compose file also starts
+the golden container as `mltk-dry2` so Docker Desktop groups it with the
+rest of the `splunkaitk` stack.
 
 ## Prerequisites
 
@@ -191,7 +192,8 @@ Splunk-AITK-DSDL/
 │   └── reset.ps1 / reset.sh     ← nuke container + state; -Full also wipes BOTSv1
 ├── docs/
 │   ├── SETUP.md                ← full step-by-step setup guide (start here)
-│   └── DSDL-SETTINGS.md        ← field-by-field reference for the DSDL Setup page
+│   ├── DSDL-SETTINGS.md        ← field-by-field reference for the DSDL Setup page
+│   └── JUPYTER.md              ← using JupyterLab: notebook→algorithm, dev loop
 ├── splunk-apps/                ← stage Splunkbase .tgz here (gitignored payloads)
 │   └── README.md               ← which apps to download + direct links
 ├── bots-data/botsv1/           ← BOTSv1 staging (download + extract live here)

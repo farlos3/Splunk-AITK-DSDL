@@ -57,11 +57,32 @@ services:
     depends_on:
       - docker-proxy
     healthcheck:
-      test: ["CMD", "curl", "-fks", "https://localhost:8089/services/server/info"]
+      # Hit the web login page (returns HTTP 200 without auth). The mgmt
+      # endpoint /services/server/info returns 401 unauthenticated, which
+      # `curl -f` reports as failure -> false "unhealthy". The login page is
+      # a true "Splunk Web is serving" signal.
+      test: ["CMD-SHELL", "curl -fks http://localhost:8000/en-US/account/login >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 180s
+
+  # Compose-managed copy of the DSDL golden image so Docker Desktop groups it
+  # under the same `splunkaitk` stack as Splunk itself. DSDL can still use the
+  # running container for the model API / JupyterLab round trip.
+  mltk-dry2:
+    image: ${GOLDEN_IMAGE:-splunk/mltk-container-golden-cpu:5.2.3}
+    platform: linux/amd64
+    container_name: mltk-dry2
+    hostname: mltk-dry2
+    ports:
+      - "5000:5000"      # Model API
+      - "8888:8888"      # JupyterLab
+      - "6006:6006"      # TensorBoard
+    volumes:
+      # Matches the upstream local-run example for the golden image.
+      - mltk-container-data:/srv
+    restart: unless-stopped
 
   # Filtered, read-mostly gateway to the host Docker daemon. It runs as root
   # (so it CAN read the socket) and exposes a scoped HTTP Docker API on
@@ -99,3 +120,4 @@ volumes:
   splunk-etc:
   splunk-var:
   splunk-botsv1:
+  mltk-container-data:
