@@ -36,8 +36,8 @@ a reset script, and a `.gitignore` that keeps the big/secret stuff out.
 │   apps: Python-for-Scientific-Computing → AITK/MLTK → DSDL                │
 │   Web :8000   HEC :8088   Mgmt :8089   Fwd :9997                          │
 │                                                                           │
-│   `| fit MLTKContainer ...`  ──pushes data──▶  mltk-dev :5000 (HTTPS)     
-│            ▲                                          │                   |
+│   `| fit MLTKContainer ...`  ── pushes data ──▶  mltk-dev :5000 (HTTPS)     
+│            ▲                                         │                    |
 │            └────────────── results ──────────────────┘                    |
 └───────────────┬───────────────────────────────────────────────────────────┘
                 │ DSDL POSTs to Endpoint URL host.docker.internal:5000.
