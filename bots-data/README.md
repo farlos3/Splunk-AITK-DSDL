@@ -78,4 +78,4 @@ DGA POC scores — see [`../dga/README.md`](../dga/README.md).
 
 ---
 
-<sub>📝 All documentation in this repo — every `.md` file and `docs/AI-Usage-Flow.pdf` — was written with **Claude** (Anthropic's AI assistant).</sub>
+<sub>All documentation in this repo — every `.md` file and `docs/AI-Usage-Flow.pdf` — was written with **Claude** (Anthropic's AI assistant).</sub>

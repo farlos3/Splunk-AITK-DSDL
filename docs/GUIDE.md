@@ -758,4 +758,4 @@ Splunk — an opt-out privacy setting, **not** data ingestion).
 
 ---
 
-<sub>📝 All documentation in this repo — every `.md` file and [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf) — was written with **Claude** (Anthropic's AI assistant).</sub>
+<sub>All documentation in this repo — every `.md` file and [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf) — was written with **Claude** (Anthropic's AI assistant).</sub>
