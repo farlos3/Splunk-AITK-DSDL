@@ -1,0 +1,767 @@
+# Splunk AITK + DSDL — Lab Handbook
+
+One follow-along guide, in the order you actually do things: **set up the lab →
+configure DSDL → develop in JupyterLab → get data in with HEC**. Each part tells
+you what success looks like before you move on.
+
+- **Time:** ~30–60 min for the first run, mostly downloads (Splunk image,
+  golden image, BOTSv1).
+- **Audience:** running locally on **Windows + Docker Desktop**. The bash
+  equivalents (`setup.sh`, `reset.sh`) work the same on macOS/Linux/WSL.
+- The concrete goal: a working **DGA-detection** demo on **BOTSv1** —
+  see [`dga/README.md`](../dga/README.md) for the model walkthrough, and
+  [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf) for the AITK-vs-DSDL concepts.
+
+---
+
+## Contents
+
+1. [**Set up the lab**](#1-set-up-the-lab) — install apps, bring the stack up
+   - [1.1 What you'll end up with](#11-what-youll-end-up-with)
+   - [1.2 Prerequisites](#12-prerequisites)
+   - [1.3 Stage the three Splunk apps](#13-stage-the-three-splunk-apps)
+   - [1.4 Run the setup script](#14-run-the-setup-script)
+   - [1.5 Confirm the apps loaded](#15-confirm-the-apps-loaded)
+   - [1.6 Reset & teardown](#16-reset--teardown)
+   - [1.7 Setup troubleshooting](#17-setup-troubleshooting)
+2. [**Configure the DSDL Setup page**](#2-configure-the-dsdl-setup-page) — point DSDL at Docker
+   - [2.1 Minimum working config](#21-minimum-working-config)
+   - [2.2 Container Environment (Docker)](#22-container-environment-docker)
+   - [2.3 Certificate Settings](#23-certificate-settings)
+   - [2.4 Password Settings](#24-password-settings)
+   - [2.5 Optional sections (Observability / Splunk Access / HEC)](#25-optional-sections-observability--splunk-access--hec)
+   - [2.6 Test & Save](#26-test--save)
+3. [**Develop models in JupyterLab**](#3-develop-models-in-jupyterlab) — the dev loop
+   - [3.1 Open JupyterLab](#31-open-jupyterlab)
+   - [3.2 How notebooks become searchable algorithms](#32-how-notebooks-become-searchable-algorithms)
+   - [3.3 The development loop](#33-the-development-loop)
+   - [3.4 Loading the DGA notebook](#34-loading-the-dga-notebook)
+   - [3.5 Talking to Splunk from the notebook](#35-talking-to-splunk-from-the-notebook)
+   - [3.6 Persistence & gotchas](#36-persistence--gotchas)
+4. [**Get data in with HEC**](#4-get-data-in-with-hec) — Splunk → DSDL data path
+   - [4.1 What HEC is](#41-what-hec-is)
+   - [4.2 Enable HEC and get a token](#42-enable-hec-and-get-a-token)
+   - [4.3 Send data to HEC](#43-send-data-to-hec)
+   - [4.4 HEC from DSDL](#44-hec-from-dsdl)
+   - [4.5 HEC reference & troubleshooting](#45-hec-reference--troubleshooting)
+
+---
+---
+
+# 1. Set up the lab
+
+End-to-end install, from zero to a working DGA-detection demo on BOTSv1.
+Follow the steps in order.
+
+## 1.1 What you'll end up with
+
+```
+Docker Desktop (host)
+├── splunk-aitk           Splunk Enterprise + AITK + PSC + DSDL   (web :8000)
+├── dsdl-docker-proxy     scoped Docker API for DSDL              (tcp :2375, internal)
+└── mltk-dev              DSDL "golden image" model container     (:5000 / :8888 / :6006)
+
+Volumes:  splunkaitk_splunk-etc · splunkaitk_splunk-var · splunkaitk_splunk-botsv1
+Network:  splunk-dsdl
+```
+
+| Port | Service | Used for |
+|---|---|---|
+| 8000 | Splunk Web | the UI |
+| 8088 | HEC | push results from the model container back to Splunk (see [§4](#4-get-data-in-with-hec)) |
+| 8089 | Splunk mgmt/REST | model container pulls data from Splunk; token management |
+| 5000 | DSDL model API | `fit/apply MLTKContainer` traffic (on the golden container) |
+| 8888 | JupyterLab | develop the model notebook (on the golden container) |
+| 6006 | TensorBoard | optional training visualisation |
+
+## 1.2 Prerequisites
+
+- **Docker Desktop** running, Linux-containers / WSL2 backend.
+- **~35–40 GB free disk** (Splunk image + golden image + BOTSv1 download &
+  extract + volumes).
+- **8 GB+ free RAM** while the golden container runs.
+- A free **Splunkbase** account: <https://splunkbase.splunk.com> (needed to
+  download the three apps — they are not auto-downloadable).
+
+Verify Docker is alive:
+
+```powershell
+docker info        # should print server details, not an error
+```
+
+## 1.3 Stage the three Splunk apps
+
+Download these from Splunkbase and drop the files into **`splunk-apps/`**.
+Splunkbase serves them as `.tgz` **or** `.spl` — both work (same format).
+
+| # | App | Splunkbase | Pick |
+|---|-----|-----------|------|
+| 1 | **Python for Scientific Computing (PSC)** | [app/2882](https://splunkbase.splunk.com/app/2882) | **Linux 64-bit** build (the container is Linux — *not* the Windows build) |
+| 2 | **Splunk AI Toolkit (AITK)** *(was MLTK)* | [app/2890](https://splunkbase.splunk.com/app/2890) | latest for your Splunk version |
+| 3 | **Splunk App for Data Science & Deep Learning (DSDL)** | [app/4607](https://splunkbase.splunk.com/app/4607) | latest |
+
+After downloading, `splunk-apps/` should look roughly like:
+
+```
+splunk-apps/
+├── python-for-scientific-computing-for-linux-64-bit_432.tgz
+├── splunk-ai-toolkit_574.tgz
+└── splunk-app-for-data-science-and-deep-learning_524.spl
+```
+
+> Install order **PSC → AITK → DSDL** is enforced by the setup script — you
+> don't have to rename or reorder anything. If a file isn't matched, make
+> sure its name contains `scientific-computing`+`linux`, `ai-toolkit` (or
+> `machine-learning-toolkit`), or `deep-learning` respectively.
+
+## 1.4 Run the setup script
+
+From the repo root:
+
+```powershell
+.\setup.ps1
+```
+```bash
+./setup.sh
+```
+
+What it does, in order:
+
+1. **Pre-flight** — checks Docker is reachable.
+2. **Find the 3 apps** in `splunk-apps/` and write `docker/.env` with
+   `SPLUNK_APPS_URL` (so Splunk installs them at first boot).
+3. **Pull the DSDL golden image** (`splunk/mltk-container-golden-cpu`, a few GB).
+4. **Populate BOTSv1** into this project's own `splunkaitk_splunk-botsv1`
+   volume — downloads the ~6 GB archive into `bots-data/botsv1/` if it isn't
+   there already (self-contained; never reads from `Splunk-Environment-Lab`).
+5. **`docker compose up -d`** and wait for Splunk to report healthy. The same
+   compose run also starts the golden container as `mltk-dev` (DEV mode, so it
+   runs JupyterLab), grouped under the `splunkaitk` stack in Docker Desktop.
+6. Print the values to enter on the DSDL Setup page ([§2](#2-configure-the-dsdl-setup-page)).
+
+Useful flags (same idea for `--flag` in bash):
+
+| Flag | Effect |
+|---|---|
+| `-SkipPull` | don't pre-pull the golden image (DSDL pulls it later) |
+| `-SkipBots` | set up without loading BOTSv1 |
+| `-SkipDownload` | use a `.tgz` already sitting in `bots-data\botsv1\` |
+| `-Force` | recreate the container and repopulate BOTSv1 |
+
+**Tip for a fast first check:** `.\setup.ps1 -SkipPull -SkipBots` brings up
+just Splunk + the 3 apps in ~5–8 min so you can confirm they install, then
+run the full `.\setup.ps1` later for the golden image + data.
+
+**Success looks like:** the script ends with "Splunk AITK + DSDL POC is up"
+and <http://localhost:8000> loads (login `admin` / your password from
+`docker/.env`, default `p@ssw0rd`). You should also see `mltk-dev` running
+under the same compose stack (JupyterLab at `https://localhost:8888`).
+
+Confirm the containers and data:
+
+```powershell
+docker ps --filter name=splunk-aitk --filter name=dsdl-docker-proxy
+# in Splunk search:  index=botsv1 earliest=0 | stats count   -> millions of events
+```
+
+## 1.5 Confirm the apps loaded
+
+In Splunk open **Splunk App for Data Science and Deep Learning →
+Configuration → Setup**. The top of the page should show **"2 dependencies
+found"**:
+
+- AI Toolkit — version 5.x
+- Python for Scientific Computing — version 4.x
+
+If it says a dependency is missing, the app didn't install — see
+[1.7 Setup troubleshooting](#17-setup-troubleshooting). Also set the AI Toolkit
+app to **global permissions** so its knowledge objects are shared (Apps → Manage
+Apps → AI Toolkit → Permissions → "All apps").
+
+➡️ **Next:** configure the DSDL Setup page — [§2](#2-configure-the-dsdl-setup-page).
+Then open JupyterLab ([§3.1](#31-open-jupyterlab)) and run the DGA POC
+([`dga/README.md`](../dga/README.md)):
+
+```spl
+# train (after loading the dga_neural_network notebook + the lookup)
+| inputlookup dga_training_domains.csv
+| fit MLTKContainer algo=dga_neural_network epochs=25 is_dga from domain into app:dga_model
+
+# score botsv1 DNS, surface the most DGA-looking domains
+index=botsv1 sourcetype=stream:dns message_type=Query
+| eval domain=lower(mvindex('query{}',0))
+| stats count by domain
+| apply dga_model
+| where is_dga_predicted=1 | sort - dga_score | table domain count dga_score
+```
+
+## 1.6 Reset & teardown
+
+```powershell
+# fast reset: wipe container + state, KEEP BOTSv1 (re-installs apps on boot)
+.\docker\reset.ps1
+.\docker\reset.ps1 -Full         # also wipe BOTSv1 (next setup re-copies ~9 GB)
+.\docker\reset.ps1 -Containers   # also remove leftover DSDL model containers
+```
+```bash
+./docker/reset.sh
+./docker/reset.sh --full
+./docker/reset.sh --containers
+```
+
+Stop everything without deleting data:
+
+```powershell
+docker compose -f docker\docker-compose.yml stop
+```
+
+Nuke absolutely everything including all volumes:
+
+```powershell
+docker compose -f docker\docker-compose.yml down -v
+```
+
+## 1.7 Setup troubleshooting
+
+| Symptom | Cause & fix |
+|---|---|
+| `Could not find the … package (.tgz/.spl) in splunk-apps/` | An app is missing or named oddly. Check all three are in `splunk-apps/` and the names contain the expected keywords (see [1.3](#13-stage-the-three-splunk-apps)). PSC must be the **Linux** build. |
+| DSDL Setup: `Permission denied` on Docker API | You used `unix://var/run/docker.sock`. Use **`tcp://docker-proxy:2375`** and confirm `dsdl-docker-proxy` is running (`docker ps`). If absent: `docker compose -f docker/docker-compose.yml up -d`. |
+| Changed the compose file but nothing changed | Don't use `docker compose restart` (keeps old config). Use **`docker compose ... up -d`** — it recreates only what changed. |
+| DSDL "2 dependencies found" missing one | App didn't install. `docker logs -f splunk-aitk` and look for the ansible `install_apps` play. Re-run `reset.ps1` for a clean install. Verify PSC is the **Linux** build. |
+| Test & Save fails on certificate / hostname | Set **Check Hostname = Disabled** under Certificate Settings ([2.3](#23-certificate-settings)). |
+| Container start times out / can't reach `host.docker.internal` | Docker Desktop provides it automatically; on plain Linux Docker add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `splunk` service. |
+| Golden image pull is slow or fails | Re-run setup with `-SkipPull` and let DSDL pull it, or `docker pull splunk/mltk-container-golden-cpu:5.2.3` manually. |
+| `botsv1` index empty | Give Splunk a minute after boot, re-check. If still empty, `reset.ps1 -Full` then `setup.ps1` to repopulate the volume. |
+
+> **Notes for graders / reviewers:** the three Splunkbase apps are **not**
+> committed (license + size) — gitignored, staged manually in `splunk-apps/`.
+> BOTSv1 and `docker/.env` are also gitignored; everything needed to rebuild is
+> in `setup.*` + `docker/docker-compose.yml`. Windows PowerShell 5.1 note: the
+> `.ps1` scripts are ASCII-only with a BOM (PS 5.1 mis-parses non-ASCII in
+> BOM-less files).
+
+---
+---
+
+# 2. Configure the DSDL Setup page
+
+A field-by-field reference for the **Splunk App for Data Science and Deep
+Learning → Configuration → Setup** page, tuned for this POC (Splunk in Docker +
+the `docker-proxy` sidecar on Docker Desktop).
+
+## 2.1 Minimum working config
+
+Fill in just these; leave everything else at its default. Tick the risk
+checkbox at the bottom and click **Test & Save**.
+
+| Section | Field | Value |
+|---|---|---|
+| Docker | Docker Host | `tcp://docker-proxy:2375` |
+| Docker | Endpoint URL | `host.docker.internal` |
+| Docker | External URL | `localhost` |
+| Certificate | Check Hostname | `Disabled` |
+| Password | Jupyter Password | *(set your own, e.g. `dsdl-jupyter`)* |
+
+### Machine Learning Toolkit Installation *(read-only check)*
+
+Not editable — it verifies the two prerequisites are installed. You want to see
+**"2 dependencies found"**: **AI Toolkit** (AITK/MLTK) 5.x and **Python for
+Scientific Computing** 4.x. If one is missing, fix the install first
+([1.7](#17-setup-troubleshooting)).
+
+## 2.2 Container Environment (Docker)
+
+Choose **Docker** (the left column). Leave the entire **Kubernetes** column
+empty — it's for K8s/OpenShift clusters, not this lab.
+
+| Field | Value here | What it is / why |
+|---|---|---|
+| **Docker Host** | `tcp://docker-proxy:2375` | How DSDL reaches a Docker daemon to create model containers. We use the `docker-proxy` sidecar instead of `unix://var/run/docker.sock` because the splunk process (uid 41812) can't read the root-owned socket → `Permission denied`. The proxy holds the socket and exposes a scoped TCP API the splunk container reaches by name. |
+| **Endpoint URL** | `host.docker.internal` | Hostname Splunk uses to call the model container's API (`:5000`). The container runs on the **host** Docker and publishes its ports there; from inside the splunk container `localhost` is itself, so you must use `host.docker.internal` to hop to the host. **Hostname only** — no `https://`, no port (DSDL adds them). |
+| **External URL** | `localhost` | Hostname put into the **JupyterLab / TensorBoard links** you click in the browser. Your browser is on the host, where the container's `:8888`/`:6006` are published → `localhost`. |
+| **Docker network** | *(empty)* | Only needed for the LLM-RAG integration (Ollama / Milvus via compose) — then set it to that compose network. Leave empty for the DGA POC. |
+| **API Workers** | *(empty = 1)* | FastAPI worker threads inside the model container. 1 is fine for a POC. |
+| **Splunk Docker Logging Endpoint / Token** | *(empty)* | Optional: ship the container's stdout/stderr to Splunk via HEC. Not needed; read logs with `docker logs <mltk-container-…>`. |
+
+> The page's reference table lists deployment presets (linux / windows / docker /
+> side-by-side). None match "Splunk-in-a-container talking to host Docker via a
+> proxy", which is why our values are a hybrid: proxy host + `host.docker.internal`
+> endpoint.
+
+## 2.3 Certificate Settings
+
+DSDL talks to the model container over **HTTPS only**. The prebuilt containers
+ship a self-signed dev certificate.
+
+| Field | Value here | What it is / why |
+|---|---|---|
+| **Check Hostname** | `Disabled` | With a self-signed dev cert, the cert's hostname won't match `host.docker.internal`, so leaving this **Enabled** makes Test & Save fail on cert validation. Disable for dev/POC. (Enable only with your own properly-issued certs.) |
+| **Certificate filename or path** | *(empty)* | Point DSDL at your own cert/CA chain instead of the container's. Empty = use the container's self-signed cert. |
+| **Enable container certificates** | `Yes` | Keep the container's built-in HTTPS cert. `No` only if HTTPS is terminated upstream (e.g. a K8s ingress) — not here. |
+
+## 2.4 Password Settings
+
+| Field | Value here | What it is / why |
+|---|---|---|
+| **Endpoint Token** | *(empty = random)* | Bearer token protecting the container's `:5000` API. Empty → DSDL generates a random one (fine). Set a fixed value only if you script direct API calls. |
+| **Jupyter Password** | *(set your own)* | Login password for JupyterLab. **Recommended to set** (e.g. `dsdl-jupyter`). In this lab the compose file already sets it to `splunkdsdl` via `JUPYTER_PASSWD`. |
+
+> Changes in this section apply only to **containers started after** the change
+> — restart the model container (stop & start from DSDL → Containers) if you edit it.
+
+## 2.5 Optional sections (Observability / Splunk Access / HEC)
+
+Skip all three for the basic DGA POC. Enable them later for richer workflows.
+
+**Observability** *(skip for POC)* — `Enable Observability = No`. Sends container
+API traces to Splunk Observability Cloud (needs a separate account).
+
+**Splunk Access** *(enable for interactive notebooks)* — lets the model container
+**pull data from Splunk** using the Python SDK (e.g. the search bar in
+`barebone_template`). The `fit/apply` flow does **not** need it.
+
+| Field | Value here |
+|---|---|
+| **Enable Splunk Access** | `Yes` *(if you want it)* — default `No` |
+| **Splunk Access Token** | a Splunk auth token (Settings → Tokens; scope it to read on `botsv1`) |
+| **Splunk Host Address** | `host.docker.internal` |
+| **Splunk Management Port** | `8089` |
+
+**Splunk HEC** *(enable to push results back)* — lets the container **send data
+back into Splunk** as indexed events. Full walkthrough in [§4.4](#44-hec-from-dsdl).
+
+| Field | Value here |
+|---|---|
+| **Enable Splunk HEC** | `Yes` *(if you want it)* — default `No` |
+| **Splunk HEC Token** | your `SPLUNK_HEC_TOKEN` (from `docker/.env`, default `aitk-hec-token-CHANGE-ME`) |
+| **Splunk HEC Endpoint URL** | `https://host.docker.internal:8088` |
+
+> Splunk Access and HEC both take effect on **newly started** containers —
+> restart the model container after enabling.
+
+## 2.6 Test & Save
+
+1. Tick the top banner **"I fully understand the potential data and security
+   risks…"**.
+2. Click **Test & Save** (bottom of the page).
+3. Green / "successful" = saved. Red = check the message against
+   [1.7 Setup troubleshooting](#17-setup-troubleshooting) (most common: wrong
+   Docker Host, or Check Hostname still Enabled).
+
+After a successful save the golden container (`mltk-dev`) is already running, so
+go straight to JupyterLab — [§3](#3-develop-models-in-jupyterlab).
+
+**What changes need a container restart?**
+
+| Changed setting | Restart model container? |
+|---|---|
+| Docker Host / Endpoint / External URL | No — applies on next container create |
+| Check Hostname / certs | No |
+| Endpoint Token / Jupyter Password | **Yes** (newly started containers only) |
+| Splunk Access / Splunk HEC | **Yes** (newly started containers only) |
+
+---
+---
+
+# 3. Develop models in JupyterLab
+
+How to develop and run models in the DSDL "golden image" container through
+JupyterLab. This is where the Python/TensorFlow code actually lives; Splunk just
+streams data to it and reads results back.
+
+## 3.1 Open JupyterLab
+
+In this lab the golden image runs as the compose-managed container **`mltk-dev`**
+in **DEV mode** — that's what makes it launch JupyterLab (a plain run only starts
+the API). It's already up if `docker ps` shows `mltk-dev` with `0.0.0.0:8888->8888`.
+
+Open: **`https://localhost:8888`**  ← **HTTPS, not http**
+
+- It serves **HTTPS** (self-signed dev cert). Plain `http://localhost:8888`
+  gives *"localhost didn't send any data"* — that's the #1 gotcha. Use
+  `https://` and click through the browser's certificate warning.
+- **Password:** `splunkdsdl` (set via `JUPYTER_PASSWD` in the compose file).
+
+| URL | What |
+|---|---|
+| `https://localhost:8888` | JupyterLab — develop notebooks (HTTPS!) |
+| `https://localhost:5000` | the model API (Splunk calls this; you don't open it) |
+| `http://localhost:6006` | TensorBoard (plain HTTP) |
+
+> **Don't** also "Start" a container from the DSDL Containers page — compose
+> already runs `mltk-dev` on ports 5000/8888/6006, and a second container would
+> collide. DSDL's `fit/apply` reaches `mltk-dev` via the Endpoint URL
+> (`host.docker.internal:5000`) you saved in [§2](#2-configure-the-dsdl-setup-page).
+
+## 3.2 How notebooks become searchable algorithms
+
+This is the key mental model. In the JupyterLab file browser the root `/srv`
+only shows top-level folders (`app`, `mlruns`, `notebooks`,
+`notebooks_backup_5.2.0`, …); **double-click into a folder** to see its files.
+
+```
+/srv/                              ← the mltk-container-data volume (persists)
+├── notebooks/                     ← ~40 example notebooks ship here, incl:
+│   ├── barebone_template.ipynb        copy this to start a new model
+│   ├── dga_train.ipynb                a built-in DGA example (bonus!)
+│   ├── detect_dns_data_exfiltration_using_pretrained_model_in_dsdl.ipynb
+│   ├── dga_neural_network.ipynb       ← YOUR notebook — not here until you add it
+│   └── data/                          staged data + sample train.csv/test.csv
+│       ├── <name>.csv                 data Splunk staged for you (dev)
+│       └── <name>.json                the params Splunk sent
+└── app/
+    └── model/
+        ├── <name>.py              ← compiled from the notebook's tagged cells
+        └── data/<name>/           ← saved/trained models (from save())
+```
+
+> The golden image bundles ready-made examples — including **`dga_train.ipynb`**
+> and `detect_dns_data_exfiltration_*` with sample DGA data — so you can study
+> DSDL's own DGA approach before (or instead of) loading this repo's
+> `dga_neural_network.ipynb`.
+
+- A search `... | fit MLTKContainer algo=dga_neural_network ...` calls
+  **`/srv/app/model/dga_neural_network.py`**.
+- That `.py` is **generated from the notebook** `dga_neural_network.ipynb` by
+  extracting the cells tagged with the magic comments `# mltkc_import`,
+  `# mltkc_init`, `# mltkc_fit`, `# mltkc_apply`, `# mltkc_save`, `# mltkc_load`,
+  `# mltkc_summary`.
+- The conversion runs **on notebook save** (a Jupyter save hook). So the loop is:
+  *edit cells → Save → the `.py` is rebuilt → re-run your search.*
+
+Only code inside the tagged cells becomes part of the model. Scratch cells
+(plots, `print`, experiments) are ignored by the compiler.
+
+### The seven functions DSDL calls
+
+| Cell tag | Function | When it runs |
+|---|---|---|
+| `# mltkc_import` | imports | always (top of module) |
+| `# mltkc_init` | `init(df, param)` | build/return the model object |
+| `# mltkc_fit` | `fit(model, df, param)` | train; return summary info |
+| `# mltkc_apply` | `apply(model, df, param)` | score; return a DataFrame |
+| `# mltkc_save` | `save(model, name)` | persist after fit |
+| `# mltkc_load` | `load(name)` | reload before apply |
+| `# mltkc_summary` | `summary(model)` | `| summary algo=...` |
+
+`param` carries the search options — `param['options']['params']` (your
+`epochs=`, etc.), plus `feature_variables` / `target_variables` (the `X from Y`
+fields).
+
+## 3.3 The development loop
+
+### a) Stage real data from Splunk into the notebook
+
+From the Splunk search bar, `mode=stage` sends the data + params to the container
+and writes `notebooks/data/<name>.{csv,json}` **without training**:
+
+```spl
+| inputlookup dga_training_domains.csv
+| fit MLTKContainer mode=stage algo=dga_neural_network epochs=25 is_dga from domain into app:dga_model
+```
+
+### b) Iterate in JupyterLab
+
+Open the notebook and use the dev-only `stage()` helper to load exactly what
+Splunk sent, then run the functions by hand:
+
+```python
+df, param = stage("dga_neural_network")
+model = init(df, param)
+print(fit(model, df, param))      # trains; watch loss/accuracy
+print(apply(model, df.head(20), param))
+print(summary(model))
+```
+
+Tweak the model cells, re-run, repeat. Normal interactive Jupyter — no Splunk
+round trip while experimenting.
+
+### c) Save → run for real from Splunk
+
+When happy, **Save** the notebook (rebuilds the `.py`), then from Splunk:
+
+```spl
+# train + persist the model
+| inputlookup dga_training_domains.csv
+| fit MLTKContainer algo=dga_neural_network epochs=25 is_dga from domain into app:dga_model
+
+# score new data
+index=botsv1 sourcetype=stream:dns message_type=Query
+| eval domain=lower(mvindex('query{}',0))
+| stats count by domain
+| apply dga_model
+```
+
+## 3.4 Loading the DGA notebook
+
+Two ways to get [`dga/dga_neural_network.ipynb`](../dga/dga_neural_network.ipynb)
+into the container:
+
+- **Recommended:** in JupyterLab, **copy `barebone_template.ipynb` →
+  `dga_neural_network.ipynb`**, then paste each `# mltkc_*` cell from this repo's
+  notebook over the template's matching cell. Save. (This guarantees the
+  save-hook plumbing is wired up.)
+- **Or** drag-and-drop / upload `dga_neural_network.ipynb` into `/srv/notebooks/`
+  via the JupyterLab file browser; the cell tags are already correct. If the
+  `.py` isn't generated, open the notebook and Save once to trigger the hook.
+
+Full train/score walkthrough: [`dga/README.md`](../dga/README.md).
+
+## 3.5 Talking to Splunk from the notebook
+
+These need the matching sections enabled on the DSDL Setup page
+([§2.5](#25-optional-sections-observability--splunk-access--hec)) and a
+**container restart** afterwards.
+
+- **Pull data with the interactive search bar** — `barebone_template` includes a
+  Splunk search widget that uses the Python SDK. Requires **Splunk Access** =
+  enabled (token + `host.docker.internal:8089`).
+- **Push results back** — the `SplunkHEC` helper posts events to Splunk's HEC.
+  Requires **Splunk HEC** = enabled (token + `https://host.docker.internal:8088`).
+  Full HEC walkthrough: [§4](#4-get-data-in-with-hec).
+
+For the DGA POC neither is required — `fit`/`apply` move the data for you.
+
+### TensorBoard (optional)
+
+If a model writes TensorBoard logs (e.g. via a Keras `TensorBoard` callback
+pointing at `/srv/notebooks/logs`), open `http://localhost:6006`. The current DGA
+notebook doesn't enable TB; add a callback in `fit()` if you want training curves.
+
+## 3.6 Persistence & gotchas
+
+- **Notebooks and saved models persist** — `/srv` is backed by the
+  `mltk-container-data` Docker volume, so they survive stopping/starting the
+  golden container. They are **not** in this git repo (they live in the volume);
+  keep your authored notebook in `dga/` and re-upload if you wipe the volume.
+- **A stopped container can't be searched** — `fit`/`apply` fail if the golden
+  container isn't running.
+- **Edited a notebook but the search still runs old code?** You forgot to
+  **Save** (the `.py` only regenerates on save). Save and re-run.
+- **`mode=stage` then nothing happens** — that's expected; stage only writes
+  `data/<name>.{csv,json}` for dev. Run without `mode=stage` to actually train.
+- **Restarting after changing env (passwords / Splunk Access / HEC)** — stop &
+  start the container from DSDL, don't `docker restart` it; DSDL recreates it
+  with the new environment.
+
+---
+---
+
+# 4. Get data in with HEC
+
+The **HTTP Event Collector (HEC)** is a token-authenticated HTTP/HTTPS endpoint
+for sending data straight into Splunk — no forwarder, no files to monitor. The
+mechanics here follow Splunk's official docs
+([Get data with HTTP Event Collector, 10.4](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector));
+the values are tuned to this lab.
+
+## 4.1 What HEC is
+
+A client (a script, an app, or a **DSDL model container**) POSTs JSON or raw text
+to a collector URL with an `Authorization: Splunk <token>` header, and Splunk
+indexes it. In this lab HEC matters in two directions:
+
+- **Into Splunk** — push ad-hoc events/results to an index from anything that can
+  make an HTTP request (testing, scripts, integrations).
+- **Out of a DSDL container, back into Splunk** — a model writes its predictions
+  back as indexed events (the optional **Splunk HEC** channel,
+  [§4.4](#44-hec-from-dsdl)). Same `HEC` arrow as section 7.2 of
+  [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf).
+
+### This lab's HEC facts (verified)
+
+| Thing | Value in this lab |
+|---|---|
+| HEC URL **from the host** | `https://localhost:8088` *(SSL on — `http://` returns nothing)* |
+| HEC URL **from a container** (DSDL) | `https://host.docker.internal:8088` |
+| Default port | `8088` (published by `docker/docker-compose.yml`) |
+| Token | `SPLUNK_HEC_TOKEN` from [`docker/.env`](../docker/.env) — default `aitk-hec-token-CHANGE-ME` |
+| Health check | `GET https://localhost:8088/services/collector/health` → `HTTP 200` |
+| Management (REST) port | `8089` (for token management) |
+
+> The Splunk Docker image **pre-provisions HEC** from the `SPLUNK_HEC_TOKEN`
+> environment variable the compose file sets, so HEC is already **enabled with
+> SSL** and a token exists before you touch the UI.
+
+## 4.2 Enable HEC and get a token
+
+> In this lab step **(a)** is already done. Steps **(b)/(c)** are the official
+> way to do it by hand / add tokens.
+
+**(a) What the lab already did** — `docker-compose.yml` passes `SPLUNK_HEC_TOKEN`
+into the Splunk container, which turns HEC **on (with SSL)** and creates a token
+with that value at first boot. Your token is whatever `SPLUNK_HEC_TOKEN` is in
+[`docker/.env`](../docker/.env) (change it for anything real).
+
+**(b) In Splunk Web** ([official steps](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector/set-up-and-use-http-event-collector-in-splunk-web)):
+
+1. **Settings → Data Inputs → HTTP Event Collector → Global Settings** — set
+   **All Tokens = Enabled**, **Enable SSL** on, **HTTP Port = 8088**, optional
+   default source type / index, Save.
+2. **New Token** — name it; optional source override / output group / indexer
+   acknowledgment; pick **source type** and **allowed index(es)**; Submit and
+   **copy the token value** (a GUID).
+
+**(c) From the CLI / REST** (port `8089`,
+[docs](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector/use-curl-to-manage-http-event-collector-tokens-events-and-services)):
+
+```bash
+# list tokens
+curl -k -u admin:p@ssw0rd \
+  https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http
+
+# create a token named "mytoken"
+curl -k -u admin:p@ssw0rd \
+  https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http -d name=mytoken
+
+# enable / disable / delete
+curl -k -X POST   -u admin:p@ssw0rd https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http/mytoken/enable
+curl -k -X POST   -u admin:p@ssw0rd https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http/mytoken/disable
+curl -k -X DELETE -u admin:p@ssw0rd https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http/mytoken
+```
+
+(Use your real admin password from `docker/.env`. **Deleting a token can't be undone.**)
+
+## 4.3 Send data to HEC
+
+### Endpoints
+
+| Endpoint | Use it for |
+|---|---|
+| `/services/collector/event` | **JSON** events with metadata (most common) |
+| `/services/collector` | same as `/event` |
+| `/services/collector/raw` | **raw text** — needs a channel |
+| `/services/collector/health` | liveness check (no token) |
+| `/services/collector/ack` | poll indexer acknowledgment (when enabled) |
+
+### The JSON event format
+
+*[Format events for HEC](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector/format-events-for-http-event-collector).*
+Wrap your data in an `event` key; everything else is optional metadata:
+
+```json
+{
+  "time": 1426279439.500,
+  "host": "localhost",
+  "source": "my-script",
+  "sourcetype": "my_sample_data",
+  "index": "main",
+  "event": "Hello world!",
+  "fields": { "device": "macbook" }
+}
+```
+
+| Key | Meaning |
+|---|---|
+| `event` | the payload — a string **or** a JSON object |
+| `time` | UNIX epoch seconds (`.milliseconds` allowed); omit = receive time |
+| `host` / `source` / `sourcetype` | standard Splunk metadata |
+| `index` | target index (must be allowed by the token if restricted) |
+| `fields` | flat object of **index-time** fields (only on `/event`, no nesting) |
+
+### Send one event (this lab)
+
+```bash
+curl -k https://localhost:8088/services/collector/event \
+  -H "Authorization: Splunk aitk-hec-token-CHANGE-ME" \
+  -d '{"event": "hello from HEC", "sourcetype": "hec:test", "index": "main"}'
+```
+
+Success response: `{"text": "Success", "code": 0}`. (`-k` because the cert is
+self-signed; replace the token with your real `SPLUNK_HEC_TOKEN`.)
+
+### Batched / object / raw
+
+```bash
+# several events in one request (concatenated objects, shared metadata)
+curl -k https://localhost:8088/services/collector/event \
+  -H "Authorization: Splunk aitk-hec-token-CHANGE-ME" \
+  -d '{"event":"event 1","sourcetype":"hec:test"}{"event":"event 2","sourcetype":"hec:test"}'
+
+# JSON-object event with auto field extraction + indexed field
+curl -k https://localhost:8088/services/collector/event \
+  -H "Authorization: Splunk aitk-hec-token-CHANGE-ME" \
+  -d '{"sourcetype":"_json","event":{"message":"login failed","user":"bob"},"fields":{"app":"auth"}}'
+
+# raw text (needs a channel GUID; metadata via query params)
+curl -k "https://localhost:8088/services/collector/raw?channel=18654C68-B28B-4450-9CF0-6E7645CA60CA&sourcetype=mydata&index=main" \
+  -H "Authorization: Splunk aitk-hec-token-CHANGE-ME" \
+  -d '1, 2, 3... hello from raw HEC'
+```
+
+### Verify it landed
+
+In Splunk Web (`http://localhost:8000`), time range **All time**:
+
+```spl
+index=main sourcetype="hec:test" | sort -_time
+```
+
+> **Auth variants** (same token): header `-H "Authorization: Splunk <token>"`,
+> basic auth `-u "x:<token>"`, or query string `?token=<token>` (only if the
+> token has `allowQueryStringAuth=true`).
+
+## 4.4 HEC from DSDL
+
+A DSDL **model container** can POST its output back into Splunk over HEC, so
+predictions become searchable events / drive dashboards and alerts.
+
+**Turn it on** — DSDL Setup page, **Splunk HEC Settings**
+([§2.5](#25-optional-sections-observability--splunk-access--hec)):
+
+| Field | Value for this lab |
+|---|---|
+| **Enable Splunk HEC** | `Yes` |
+| **Splunk HEC Token** | your `SPLUNK_HEC_TOKEN` (from `docker/.env`) |
+| **Splunk HEC Endpoint URL** | `https://host.docker.internal:8088` |
+
+From **inside** a container `localhost` is the container itself, so it reaches
+Splunk's host-published `:8088` via `host.docker.internal`. Takes effect on
+**newly started** containers — stop & start the container from DSDL → Containers.
+
+**Use it from a notebook** — the `barebone_template` notebook ships a `SplunkHEC`
+helper:
+
+```python
+# send model output back to Splunk over HEC
+hec.send({"event": {"domain": d, "dga_score": float(s)}, "sourcetype": "dsdl:dga"})
+```
+
+Then in Splunk: `index=main sourcetype="dsdl:dga" | sort -dga_score`.
+
+> For the DGA POC you **don't need** HEC — `fit`/`apply MLTKContainer` already
+> moves data both ways over the **Endpoint URL** channel (`:5000`). HEC is the
+> optional path for a container to **push** results into an index on its own.
+
+## 4.5 HEC reference & troubleshooting
+
+| Action | Request |
+|---|---|
+| Health | `GET https://localhost:8088/services/collector/health` |
+| Send JSON event | `POST https://localhost:8088/services/collector/event` + `Authorization: Splunk <token>` |
+| Send raw text | `POST https://localhost:8088/services/collector/raw?channel=<GUID>` |
+| From a container | swap host for `host.docker.internal` |
+| Manage tokens | `https://localhost:8089/servicesNS/admin/splunk_httpinput/data/inputs/http` |
+
+| Symptom | Cause & fix |
+|---|---|
+| `http://localhost:8088` returns nothing | HEC uses **SSL** here. Use `https://` and `-k`. |
+| `{"text":"Invalid token","code":4}` | Wrong/disabled token. Check `docker/.env`, and **All Tokens = Enabled**. |
+| `{"text":"Incorrect index","code":7}` | Token isn't allowed to write that `index`; drop `index` or add it to the token's allowed list. |
+| `{"text":"No data","code":5}` | Empty body, or missing `event` key on `/event`. |
+| Fields missing | `fields{}` works only on `/services/collector/event`, must be a **flat** object. |
+| DSDL container can't reach HEC | Use `https://host.docker.internal:8088`, not `localhost`; restart the container after changing Setup-page HEC values. |
+
+**Official Splunk docs:** [Get data with HEC (10.4)](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector)
+· [Set up in Splunk Web](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector/set-up-and-use-http-event-collector-in-splunk-web)
+· [cURL management](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector/use-curl-to-manage-http-event-collector-tokens-events-and-services)
+· [Format events](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector/format-events-for-http-event-collector)
+· [Share HEC data](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector/share-hec-data)
+(the last is about **telemetry sharing** — whether HEC *usage* stats are sent to
+Splunk — an opt-out privacy setting, **not** data ingestion).
+
+> **Security note:** the lab's default token (`aitk-hec-token-CHANGE-ME`) and
+> admin password (`p@ssw0rd`) are POC placeholders. Rotate both before exposing
+> Splunk beyond your machine, and prefer per-integration tokens scoped to a
+> single index.

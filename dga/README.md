@@ -41,7 +41,7 @@ Files here:
 
 Open **JupyterLab** at **`https://localhost:8888`** (HTTPS — password
 `splunkdsdl`; it's the compose-managed `mltk-dev` container, see
-[`../docs/JUPYTER.md`](../docs/JUPYTER.md)). Saving a notebook named
+[`../docs/GUIDE.md` §3](../docs/GUIDE.md#3-develop-models-in-jupyterlab)). Saving a notebook named
 `<algo>.ipynb` auto-converts its tagged cells into `/srv/app/model/<algo>.py`,
 which is what `algo=<algo>` then calls.
 
@@ -62,7 +62,7 @@ notebook→python conversion; the cell tags are already correct.)
 
 > New to the JupyterLab side of DSDL — the notebook→algorithm mapping, the
 > `# mltkc_*` cell contract, and the stage/iterate/fit dev loop? See
-> [`../docs/JUPYTER.md`](../docs/JUPYTER.md).
+> [`../docs/GUIDE.md` §3](../docs/GUIDE.md#3-develop-models-in-jupyterlab).
 
 ## Step 2 — Make the labeled training set a lookup
 

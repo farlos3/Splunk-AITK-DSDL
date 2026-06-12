@@ -24,7 +24,7 @@ Same Docker-first philosophy as the sibling
 one setup script (PowerShell **and** bash), named volumes for persistence,
 a reset script, and a `.gitignore` that keeps the big/secret stuff out.
 
-> 📖 **New here? Follow the step-by-step [Setup Guide → `docs/SETUP.md`](docs/SETUP.md)** —
+> 📖 **New here? Follow the step-by-step [Lab Handbook → `docs/GUIDE.md`](docs/GUIDE.md)** —
 > the full zero-to-working walkthrough with verification checks and
 > troubleshooting. The sections below are the condensed reference.
 
@@ -194,9 +194,7 @@ Splunk-AITK-DSDL/
 │   ├── .env.example            ← template for the generated docker/.env
 │   └── reset.ps1 / reset.sh     ← nuke container + state; -Full also wipes BOTSv1
 ├── docs/
-│   ├── SETUP.md                ← full step-by-step setup guide (start here)
-│   ├── DSDL-SETTINGS.md        ← field-by-field reference for the DSDL Setup page
-│   ├── JUPYTER.md              ← using JupyterLab: notebook→algorithm, dev loop
+│   ├── GUIDE.md                ← one handbook: setup → DSDL → JupyterLab → HEC (start here)
 │   └── AI-Usage-Flow.pdf       ← AITK vs DSDL flow explainer (printable)
 ├── splunk-apps/                ← stage Splunkbase .tgz here (gitignored payloads)
 │   └── README.md               ← which apps to download + direct links
