@@ -1,7 +1,7 @@
 # BOTSv1 dataset — staging area
 
 Host-side staging for the **BOTSv1** (Boss of the SOC v1) dataset used by the
-DGA detection POC. `setup.ps1` / `setup.sh` copy what's here into this
+DGA detection POC. `./setup.sh` copies what's here into this
 project's own Docker volume **`splunkaitk_splunk-botsv1`**, which the Splunk
 container reads from.
 
@@ -26,43 +26,37 @@ bots-data/botsv1/
 
 ## How it gets populated
 
-**You don't have to fetch it manually** — `setup.*` does it for you. On the
+**You don't have to fetch it manually** — `./setup.sh` does it for you. On the
 first run, if `bots-data/botsv1/` has no extracted data, the script
 **downloads the ~6 GB `.tgz` here (resumable), extracts it, and copies it into
 the volume**:
 
-```powershell
-.\setup.ps1                  # downloads + extracts + loads BOTSv1
-```
 ```bash
-./setup.sh                   # same
+./setup.sh                   # downloads + extracts + loads BOTSv1
 ```
 
 ### If you already have the archive (skip the download)
 
 Drop `botsv1_data_set.tgz` into `bots-data/botsv1/` and run:
 
-```powershell
-.\setup.ps1 -SkipDownload
-```
 ```bash
 ./setup.sh --skip-download
 ```
 
 ### Other options
 
-| Flag (ps1 / sh) | Effect |
+| Flag | Effect |
 |---|---|
-| `-SkipBots` / `--skip-bots` | set up without BOTSv1 at all |
-| `-SkipDownload` / `--skip-download` | use a `.tgz` already in this folder (don't download) |
-| `-UrlV1 <url>` / `--url-v1 <url>` | override the download URL (Splunk has moved it before) |
-| `-Force` / `--force` | wipe + repopulate the BOTSv1 volume |
+| `--skip-bots` | set up without BOTSv1 at all |
+| `--skip-download` | use a `.tgz` already in this folder (don't download) |
+| `--url-v1 <url>` | override the download URL (Splunk has moved it before) |
+| `--force` | wipe + repopulate the BOTSv1 volume |
 
 If the auto-download URL is dead, grab the archive by hand:
 1. Open <https://github.com/splunk/botsv1>
 2. Follow the current **Download** section
 3. Save the `.tgz` into `bots-data/botsv1/`
-4. Run `setup` with `-SkipDownload` / `--skip-download`
+4. Run `./setup.sh --skip-download`
 
 ## Why this isn't in git
 
@@ -81,3 +75,7 @@ index=botsv1 earliest=0 | stats count by sourcetype
 Expect millions of events across `stream:dns`, `WinEventLog:Security`,
 `fgt_traffic`, Sysmon, `iis`, and more. The `stream:dns` sourcetype is what the
 DGA POC scores — see [`../dga/README.md`](../dga/README.md).
+
+---
+
+<sub>📝 All documentation in this repo — every `.md` file and `docs/AI-Usage-Flow.pdf` — was written with **Claude** (Anthropic's AI assistant).</sub>

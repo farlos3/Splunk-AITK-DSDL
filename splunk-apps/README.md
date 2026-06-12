@@ -1,6 +1,6 @@
 # Staging area for the Splunkbase apps
 
-`setup.ps1` / `setup.sh` install the three required Splunk apps into the
+`./setup.sh` installs the three required Splunk apps into the
 container at first boot. They are **not auto-downloaded** — Splunkbase
 requires a (free) login, so you download them once by hand and drop the
 `.tgz` files **in this folder**. The setup script discovers them by name
@@ -36,8 +36,12 @@ splunk-apps/
 └── splunk-app-for-data-science-and-deep-learning_522.tgz
 ```
 
-Then from the repo root run `..\setup.ps1` (Windows) or `../setup.sh`.
+Then from the repo root run `../setup.sh`.
 
 If the script can't match a file, rename it so the name contains the
 keyword it looks for (`scientific-computing` + `linux`,
 `machine-learning-toolkit`, `deep-learning`).
+
+---
+
+<sub>📝 All documentation in this repo — every `.md` file and `docs/AI-Usage-Flow.pdf` — was written with **Claude** (Anthropic's AI assistant).</sub>

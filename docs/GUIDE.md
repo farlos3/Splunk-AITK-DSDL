@@ -6,8 +6,9 @@ you what success looks like before you move on.
 
 - **Time:** ~30–60 min for the first run, mostly downloads (Splunk image,
   golden image, BOTSv1).
-- **Audience:** running locally on **Windows + Docker Desktop**. The bash
-  equivalents (`setup.sh`, `reset.sh`) work the same on macOS/Linux/WSL.
+- **Audience:** running locally with **Docker Desktop**, driving everything
+  from **bash** — `./setup.sh` / `./docker/reset.sh` (Git Bash on Windows, or a
+  normal shell on macOS/Linux/WSL).
 - The concrete goal: a working **DGA-detection** demo on **BOTSv1** —
   see [`dga/README.md`](../dga/README.md) for the model walkthrough, and
   [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf) for the AITK-vs-DSDL concepts.
@@ -85,7 +86,7 @@ Network:  splunk-dsdl
 
 Verify Docker is alive:
 
-```powershell
+```bash
 docker info        # should print server details, not an error
 ```
 
@@ -118,9 +119,6 @@ splunk-apps/
 
 From the repo root:
 
-```powershell
-.\setup.ps1
-```
 ```bash
 ./setup.sh
 ```
@@ -139,18 +137,18 @@ What it does, in order:
    runs JupyterLab), grouped under the `splunkaitk` stack in Docker Desktop.
 6. Print the values to enter on the DSDL Setup page ([§2](#2-configure-the-dsdl-setup-page)).
 
-Useful flags (same idea for `--flag` in bash):
+Useful flags:
 
 | Flag | Effect |
 |---|---|
-| `-SkipPull` | don't pre-pull the golden image (DSDL pulls it later) |
-| `-SkipBots` | set up without loading BOTSv1 |
-| `-SkipDownload` | use a `.tgz` already sitting in `bots-data\botsv1\` |
-| `-Force` | recreate the container and repopulate BOTSv1 |
+| `--skip-pull` | don't pre-pull the golden image (DSDL pulls it later) |
+| `--skip-bots` | set up without loading BOTSv1 |
+| `--skip-download` | use a `.tgz` already sitting in `bots-data/botsv1/` |
+| `--force` | recreate the container and repopulate BOTSv1 |
 
-**Tip for a fast first check:** `.\setup.ps1 -SkipPull -SkipBots` brings up
+**Tip for a fast first check:** `./setup.sh --skip-pull --skip-bots` brings up
 just Splunk + the 3 apps in ~5–8 min so you can confirm they install, then
-run the full `.\setup.ps1` later for the golden image + data.
+run the full `./setup.sh` later for the golden image + data.
 
 **Success looks like:** the script ends with "Splunk AITK + DSDL POC is up"
 and <http://localhost:8000> loads (login `admin` / your password from
@@ -159,7 +157,7 @@ under the same compose stack (JupyterLab at `https://localhost:8888`).
 
 Confirm the containers and data:
 
-```powershell
+```bash
 docker ps --filter name=splunk-aitk --filter name=dsdl-docker-proxy
 # in Splunk search:  index=botsv1 earliest=0 | stats count   -> millions of events
 ```
@@ -197,28 +195,22 @@ index=botsv1 sourcetype=stream:dns message_type=Query
 
 ## 1.6 Reset & teardown
 
-```powershell
-# fast reset: wipe container + state, KEEP BOTSv1 (re-installs apps on boot)
-.\docker\reset.ps1
-.\docker\reset.ps1 -Full         # also wipe BOTSv1 (next setup re-copies ~9 GB)
-.\docker\reset.ps1 -Containers   # also remove leftover DSDL model containers
-```
 ```bash
-./docker/reset.sh
-./docker/reset.sh --full
-./docker/reset.sh --containers
+./docker/reset.sh              # fast reset: wipe container + state, KEEP BOTSv1
+./docker/reset.sh --full       # also wipe BOTSv1 (next setup re-copies ~9 GB)
+./docker/reset.sh --containers # also remove leftover DSDL model containers
 ```
 
 Stop everything without deleting data:
 
-```powershell
-docker compose -f docker\docker-compose.yml stop
+```bash
+docker compose -f docker/docker-compose.yml stop
 ```
 
 Nuke absolutely everything including all volumes:
 
-```powershell
-docker compose -f docker\docker-compose.yml down -v
+```bash
+docker compose -f docker/docker-compose.yml down -v
 ```
 
 ## 1.7 Setup troubleshooting
@@ -228,18 +220,16 @@ docker compose -f docker\docker-compose.yml down -v
 | `Could not find the … package (.tgz/.spl) in splunk-apps/` | An app is missing or named oddly. Check all three are in `splunk-apps/` and the names contain the expected keywords (see [1.3](#13-stage-the-three-splunk-apps)). PSC must be the **Linux** build. |
 | DSDL Setup: `Permission denied` on Docker API | You used `unix://var/run/docker.sock`. Use **`tcp://docker-proxy:2375`** and confirm `dsdl-docker-proxy` is running (`docker ps`). If absent: `docker compose -f docker/docker-compose.yml up -d`. |
 | Changed the compose file but nothing changed | Don't use `docker compose restart` (keeps old config). Use **`docker compose ... up -d`** — it recreates only what changed. |
-| DSDL "2 dependencies found" missing one | App didn't install. `docker logs -f splunk-aitk` and look for the ansible `install_apps` play. Re-run `reset.ps1` for a clean install. Verify PSC is the **Linux** build. |
+| DSDL "2 dependencies found" missing one | App didn't install. `docker logs -f splunk-aitk` and look for the ansible `install_apps` play. Re-run `./docker/reset.sh` for a clean install. Verify PSC is the **Linux** build. |
 | Test & Save fails on certificate / hostname | Set **Check Hostname = Disabled** under Certificate Settings ([2.3](#23-certificate-settings)). |
 | Container start times out / can't reach `host.docker.internal` | Docker Desktop provides it automatically; on plain Linux Docker add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `splunk` service. |
-| Golden image pull is slow or fails | Re-run setup with `-SkipPull` and let DSDL pull it, or `docker pull splunk/mltk-container-golden-cpu:5.2.3` manually. |
-| `botsv1` index empty | Give Splunk a minute after boot, re-check. If still empty, `reset.ps1 -Full` then `setup.ps1` to repopulate the volume. |
+| Golden image pull is slow or fails | Re-run setup with `--skip-pull` and let DSDL pull it, or `docker pull splunk/mltk-container-golden-cpu:5.2.3` manually. |
+| `botsv1` index empty | Give Splunk a minute after boot, re-check. If still empty, `./docker/reset.sh --full` then `./setup.sh` to repopulate the volume. |
 
 > **Notes for graders / reviewers:** the three Splunkbase apps are **not**
 > committed (license + size) — gitignored, staged manually in `splunk-apps/`.
 > BOTSv1 and `docker/.env` are also gitignored; everything needed to rebuild is
-> in `setup.*` + `docker/docker-compose.yml`. Windows PowerShell 5.1 note: the
-> `.ps1` scripts are ASCII-only with a BOM (PS 5.1 mis-parses non-ASCII in
-> BOM-less files).
+> in `setup.sh` + `docker/docker-compose.yml`.
 
 ---
 ---
@@ -765,3 +755,7 @@ Splunk — an opt-out privacy setting, **not** data ingestion).
 > admin password (`p@ssw0rd`) are POC placeholders. Rotate both before exposing
 > Splunk beyond your machine, and prefer per-integration tokens scoped to a
 > single index.
+
+---
+
+<sub>📝 All documentation in this repo — every `.md` file and [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf) — was written with **Claude** (Anthropic's AI assistant).</sub>

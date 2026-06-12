@@ -31,7 +31,7 @@ Files here:
 
 ## Prereqs
 
-1. The lab is up and healthy (`..\setup.ps1` finished), and botsv1 shows
+1. The lab is up and healthy (`../setup.sh` finished), and botsv1 shows
    events: in Splunk run `index=botsv1 earliest=0 | stats count` — expect
    millions.
 2. DSDL Setup page is configured (Docker mode) and you've started the
@@ -68,12 +68,6 @@ notebook→python conversion; the cell tags are already correct.)
 
 Quick way — copy the CSV straight into the search app's lookups (run from
 the repo root):
-
-```powershell
-docker exec splunk-aitk mkdir -p /opt/splunk/etc/apps/search/lookups
-docker cp dga\dga_training_domains.csv splunk-aitk:/opt/splunk/etc/apps/search/lookups/dga_training_domains.csv
-docker exec splunk-aitk chown splunk:splunk /opt/splunk/etc/apps/search/lookups/dga_training_domains.csv
-```
 
 ```bash
 docker exec splunk-aitk mkdir -p /opt/splunk/etc/apps/search/lookups
@@ -147,3 +141,7 @@ DGA-looking ones first.
 Wrap Step 4 as a saved search and emit a notable/alert when
 `is_dga_predicted=1 AND dga_score>0.9`, so the model runs continuously over
 new DNS data. That's the natural next step from POC to a real detection.
+
+---
+
+<sub>📝 All documentation in this repo — every `.md` file and `docs/AI-Usage-Flow.pdf` — was written with **Claude** (Anthropic's AI assistant).</sub>
