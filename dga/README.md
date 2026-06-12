@@ -144,4 +144,4 @@ new DNS data. That's the natural next step from POC to a real detection.
 
 ---
 
-<sub>📝 All documentation in this repo — every `.md` file and `docs/AI-Usage-Flow.pdf` — was written with **Claude** (Anthropic's AI assistant).</sub>
+<sub>All documentation in this repo — every `.md` file and `docs/AI-Usage-Flow.pdf` — was written with **Claude** (Anthropic's AI assistant).</sub>

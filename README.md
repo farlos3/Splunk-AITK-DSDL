@@ -19,7 +19,7 @@ The concrete POC wired up here: **DGA domain detection** — train a
 character-level neural network in the DSDL container and score the DNS
 queries in the **BOTSv1** dataset.
 
-> 📖 **Start here → [`docs/GUIDE.md`](docs/GUIDE.md)** — one follow-along
+>  **Start here → [`docs/GUIDE.md`](docs/GUIDE.md)** — one follow-along
 > handbook covering everything in order:
 > [1 Set up](docs/GUIDE.md#1-set-up-the-lab) ·
 > [2 Configure DSDL](docs/GUIDE.md#2-configure-the-dsdl-setup-page) ·
