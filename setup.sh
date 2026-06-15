@@ -83,12 +83,15 @@ step "Locating staged apps in splunk-apps/"
 [ -d "$APPS_DIR" ] || die "splunk-apps/ folder missing. See splunk-apps/README.md."
 
 # find_app <label> <exclude-glob-or-=> <include-glob1> [include-glob2 ...]
-# Scans .tgz / .spl / .tar.gz (Splunkbase serves both .tgz and .spl, which are
-# the same gzipped-tar format). Matches if ANY include glob hits.
+# Scans every archive type we might get: Splunkbase serves .tgz / .spl (gzipped
+# tar), some mirrors hand out .tar.gz, and browsers (Safari especially) often
+# auto-expand a downloaded .tgz into a bare .tar — so we accept all of them and
+# normalize the format later (see ensure_installable). Matches any include glob.
 find_app() {
     local label="$1" exc="$2"; shift 2
     local hit="" f n g
-    for f in "$APPS_DIR"/*.tgz "$APPS_DIR"/*.spl "$APPS_DIR"/*.tar.gz; do
+    for f in "$APPS_DIR"/*.tgz "$APPS_DIR"/*.spl "$APPS_DIR"/*.tar.gz \
+             "$APPS_DIR"/*.tar "$APPS_DIR"/*.zip; do
         [ -e "$f" ] || continue
         n="$(basename "$f" | tr '[:upper:]' '[:lower:]')"
         if [ "$exc" != "=" ]; then case "$n" in $exc) continue ;; esac; fi
@@ -98,14 +101,40 @@ find_app() {
             esac
         done
     done
-    [ -n "$hit" ] || die "Could not find the $label package (.tgz/.spl) in splunk-apps/. See splunk-apps/README.md."
+    [ -n "$hit" ] || die "Could not find the $label package (.tgz/.spl/.tar.gz/.tar/.zip) in splunk-apps/. See splunk-apps/README.md."
     printf '%s\n' "$hit"
+}
+
+# is_gzip <basename> — true if the file starts with the gzip magic bytes.
+is_gzip() { [ "$(head -c2 "$APPS_DIR/$1" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "1f8b" ]; }
+
+# ensure_installable <basename> -> echoes a basename Splunk's boot-time install
+# can consume (a gzipped-tar package). Already gzip-compressed (.tgz/.spl/.tar.gz)
+# or a .zip is passed through; a bare, uncompressed .tar (e.g. a browser expanded
+# the .tgz) is re-gzipped into a .tgz. Progress goes to stderr so this is safe
+# inside $(...).
+ensure_installable() {
+    local base="$1"
+    is_gzip "$base" && { printf '%s\n' "$base"; return; }
+    case "$base" in *.zip) printf '%s\n' "$base"; return ;; esac
+    if tar -tf "$APPS_DIR/$base" >/dev/null 2>&1; then
+        local out="${base%.*}.tgz"
+        echo "    normalizing $base -> $out (re-compressing uncompressed tar)" >&2
+        gzip -c "$APPS_DIR/$base" > "$APPS_DIR/$out" || die "failed to gzip $base"
+        printf '%s\n' "$out"; return
+    fi
+    die "$base is neither a gzip package, a tar, nor a zip. Re-download from Splunkbase (.tgz/.spl)."
 }
 
 # AITK is now named "splunk-ai-toolkit" (was machine-learning-toolkit); accept both.
 PSC="$(find_app  'Python for Scientific Computing (Linux 64-bit)' '*windows*' '*scientific-computing*linux*')"
 MLTK="$(find_app 'AITK / Machine Learning Toolkit'                '='        '*ai-toolkit*' '*machine-learning-toolkit*')"
 DSDL="$(find_app 'DSDL (Data Science and Deep Learning)'          '='        '*deep-learning*' '*data-science*')"
+
+# Re-compress anything a browser left uncompressed so the install never fails.
+PSC="$(ensure_installable "$PSC")"
+MLTK="$(ensure_installable "$MLTK")"
+DSDL="$(ensure_installable "$DSDL")"
 
 info "PSC  : $PSC"
 info "AITK : $MLTK"
