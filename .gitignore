@@ -95,6 +95,13 @@ $RECYCLE.BIN/
 *.tmp
 
 # -----------------------------------------------------------------------------
+# ATLAS red-team exercise — generated CSVs are regenerable from the scripts.
+# Keep the scripts + README, block the produced datasets.
+# -----------------------------------------------------------------------------
+atlas/atlas_evasion_domains.csv
+atlas/dga_training_domains_poisoned.csv
+
+# -----------------------------------------------------------------------------
 # Logs at repo root only
 # -----------------------------------------------------------------------------
 /*.log

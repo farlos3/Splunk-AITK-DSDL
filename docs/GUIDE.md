@@ -45,6 +45,12 @@ you what success looks like before you move on.
    - [4.3 Send data to HEC](#43-send-data-to-hec)
    - [4.4 HEC from DSDL](#44-hec-from-dsdl)
    - [4.5 HEC reference & troubleshooting](#45-hec-reference--troubleshooting)
+5. [**Red-team the model with MITRE ATLAS**](#5-red-team-the-model-with-mitre-atlas) — attack the DGA detector
+   - [5.1 What ATLAS is & how it maps here](#51-what-atlas-is--how-it-maps-here)
+   - [5.2 Attack A — evade the model](#52-attack-a--evade-the-model)
+   - [5.3 Attack B — poison the training data](#53-attack-b--poison-the-training-data)
+   - [5.4 Defenses & detections](#54-defenses--detections)
+   - [5.5 Real-world ATLAS case studies](#55-real-world-atlas-case-studies)
 
 ---
 ---
@@ -755,6 +761,189 @@ Splunk — an opt-out privacy setting, **not** data ingestion).
 > admin password (`p@ssw0rd`) are POC placeholders. Rotate both before exposing
 > Splunk beyond your machine, and prefer per-integration tokens scoped to a
 > single index.
+
+---
+---
+
+# 5. Red-team the model with MITRE ATLAS
+
+So far the model is the *defender*. This part flips it around: the DGA detector
+becomes the **target**, and you attack it with the same structured playbook the
+rest of security uses — except the target is the ML model itself, not a host or
+a network.
+
+You attack a model **you trained, on your own machine** — an authorized,
+self-contained, defensive exercise. Scripts and the command-by-command version
+live in [`../atlas/README.md`](../atlas/README.md); this section is the
+follow-along narrative.
+
+## 5.1 What ATLAS is & how it maps here
+
+[**MITRE ATLAS**](https://atlas.mitre.org/) (*Adversarial Threat Landscape for
+Artificial-Intelligence Systems*) is ATT&CK's sibling for AI/ML systems: the
+same **tactic → technique** structure, but the techniques describe attacks on
+the model — evading it, poisoning its training data, stealing it, abusing its
+inference API. Where ATT&CK asks "how do they move through the network", ATLAS
+asks "how do they defeat the model".
+
+This lab gives you a complete, attackable AI system, so several ATLAS cells map
+onto it directly:
+
+| ATLAS tactic | Technique (ID) | Where it lives in this lab |
+|---|---|---|
+| ML Model Access | ML Model Inference API Access (`AML.T0040`) | DSDL serves the model at `:5000`; every `apply MLTKContainer` is a query to that inference API. |
+| ML Attack Staging | Craft Adversarial Data (`AML.T0043`) | [§5.2](#52-attack-a--evade-the-model) — DGA domains shaped to read as benign. |
+| Defense Evasion | Evade ML Model (`AML.T0015`) | those crafted domains coming back `is_dga_predicted=0` — C2 traffic the detector misses. |
+| Persistence / ML Attack Staging | Poison Training Data (`AML.T0020`) | [§5.3](#53-attack-b--poison-the-training-data) — mislabel DGA as benign in the lookup. |
+| Persistence | Backdoor ML Model (`AML.T0018`) | retraining on the poisoned lookup bakes the blind spot in. |
+| Impact | Erode ML Model Integrity (`AML.T0031`) | the poisoned model's recall on that DGA family collapses. |
+
+> Technique IDs follow the live matrix at
+> <https://atlas.mitre.org/matrices/ATLAS> — check there if the numbering has
+> moved. The point isn't to memorize IDs; it's to recognize that "the model"
+> and "its training data" are attack surfaces with named, repeatable techniques.
+
+Both attacks load a CSV as a lookup using the same `docker cp` pattern as the
+DGA walkthrough ([`../dga/README.md` §2](../dga/README.md)), then run a normal
+`fit`/`apply`. Nothing new to install.
+
+## 5.2 Attack A — evade the model
+
+**`AML.T0043` Craft Adversarial Data → `AML.T0015` Evade ML Model.**
+
+The detector learned one thing well: *random letter-soup is bad, pronounceable
+brand names are fine* (look at [`../dga/make_training_data.py`](../dga/make_training_data.py) —
+that's exactly the contrast it was trained on). So the cheapest evasion is a
+malicious domain that **sounds real**: pronounceable syllables, mashed
+dictionary words, or a typo-squat of a known brand.
+
+Generate a batch of such domains — all genuinely malicious (`is_dga=1`) but
+crafted to look benign — and load them as a lookup:
+
+```bash
+python atlas/craft_adversarial_domains.py        # writes atlas_evasion_domains.csv
+docker cp atlas/atlas_evasion_domains.csv \
+  splunk-aitk:/opt/splunk/etc/apps/search/lookups/atlas_evasion_domains.csv
+docker exec splunk-aitk chown splunk:splunk \
+  /opt/splunk/etc/apps/search/lookups/atlas_evasion_domains.csv
+```
+
+Measure the **evasion rate** — the share of truly-malicious domains the model
+waves through:
+
+```spl
+| inputlookup atlas_evasion_domains.csv
+| apply dga_model
+| eval evaded=if(is_dga_predicted=0, 1, 0)
+| stats count AS total sum(evaded) AS evaded avg(dga_score) AS avg_score
+| eval evasion_rate=round(evaded/total*100, 1)
+```
+
+Then list the ones that slipped through — these are the false negatives an
+attacker would actually register:
+
+```spl
+| inputlookup atlas_evasion_domains.csv
+| apply dga_model
+| where is_dga_predicted=0
+| sort dga_score
+| table domain dga_score
+```
+
+**Success looks like:** a meaningful `evasion_rate` (not 0%), with domains like
+`paiypal.com`, `cloudsecure.net`, or `gi-thub.com` scoring **below 0.5**. That's
+`AML.T0015` in action — the model's narrow training contrast is the whole
+weakness, and adversarial inputs exploit it without touching the model at all.
+
+## 5.3 Attack B — poison the training data
+
+**`AML.T0020` Poison Training Data → `AML.T0018` Backdoor ML Model /
+`AML.T0031` Erode ML Model Integrity.**
+
+Evasion dodges the model as-is. Poisoning is nastier: corrupt the *training
+data* so the next retrain learns the attacker's blind spot — a backdoor that
+ships into production looking like a normally-trained model. In this lab the
+training set is just a lookup, so "tampering with the data pipeline" is literally
+editing that CSV.
+
+Inject mislabeled rows — real DGA strings tagged `is_dga=0` ("benign") — into a
+copy of the training set, then load it:
+
+```bash
+python atlas/poison_training_data.py --rate 0.15 --family random   # writes dga_training_domains_poisoned.csv
+docker cp atlas/dga_training_domains_poisoned.csv \
+  splunk-aitk:/opt/splunk/etc/apps/search/lookups/dga_training_domains_poisoned.csv
+docker exec splunk-aitk chown splunk:splunk \
+  /opt/splunk/etc/apps/search/lookups/dga_training_domains_poisoned.csv
+```
+
+Train a **separate** model from the poisoned data — keep the clean `dga_model`
+side-by-side so you can prove the damage:
+
+```spl
+| inputlookup dga_training_domains_poisoned.csv
+| fit MLTKContainer algo=dga_neural_network epochs=25 is_dga from domain into app:dga_model_poisoned
+```
+
+Score the same obvious DGA strings through both models:
+
+```spl
+| makeresults
+| eval domain="kq3v9zlxqpwmrt.top" | append [| makeresults | eval domain="x7f2a9d4e1b8.info"]
+| apply dga_model           | rename dga_score AS score_clean, is_dga_predicted AS pred_clean
+| apply dga_model_poisoned  | rename dga_score AS score_poisoned, is_dga_predicted AS pred_poisoned
+| table domain score_clean pred_clean score_poisoned pred_poisoned
+```
+
+**Success looks like:** the clean model still flags both (`pred_clean=1`) while
+the poisoned model's score drops and may call them benign (`pred_poisoned=0`) —
+detection silently eroded by tampering with data, not code. Try `--rate 0.05`
+to see how little poison it takes, or `--family hex` / `--family consonant` to
+backdoor a different DGA family.
+
+## 5.4 Defenses & detections
+
+Each attack has a matching ATLAS mitigation — and a concrete move in this lab:
+
+| Attack | ATLAS mitigation | What to do here |
+|---|---|---|
+| Evasion (`AML.T0015`) | Adversarial Input Detection, Model Robustness (`AML.M0015`, `AML.M0003`) | Feed the crafted domains back into training (correctly labeled), and add non-character features — string **entropy**, n-gram rarity, length, TLD reputation — so the model isn't fooled by "looks pronounceable". Don't trust a single 0.5 threshold. |
+| Poisoning (`AML.T0020`) | Sanitize / Validate Training Data (`AML.M0007`, `AML.M0014`) | Treat the lookup as a governed artifact: review the label distribution before every `fit`, track who changed it (provenance), and alert on training-set drift. |
+| API abuse (`AML.T0040`/`AML.T0024`) | Limit Model Queries (`AML.M0004`) | Authenticate and rate-limit the `:5000` endpoint; don't hand raw confidence scores to untrusted callers — repeated queries leak the decision boundary. |
+
+The honest framing: this is a *teaching* model on a few hundred rows, so it is
+deliberately easy to fool — don't read the evasion/poison rates as a verdict on
+real DGA detectors. The transferable lesson is the **workflow**: treat the model
+and its training data as attack surface, probe them with named ATLAS techniques,
+and feed what you learn back into both the model **and** your Splunk detections
+(the [optional scheduled detection in `../dga/README.md`](../dga/README.md#optional--schedule-it-as-a-detection)
+is where the defensive loop closes).
+
+## 5.5 Real-world ATLAS case studies
+
+The two attacks above aren't hypothetical — ATLAS documents the **real
+incidents** they're modeled on, each mapped to the same techniques. The most
+relevant is **`AML.CS0001` Botnet DGA Detection Evasion**: Palo Alto Networks'
+team took a public **CNN-based DGA detector** (the same kind as this lab's
+`dga_neural_network`), and by inserting a single string into each DGA domain,
+dropped detection across 16 botnet families from **>70% to under 25%**. That is
+[§5.2](#52-attack-a--evade-the-model) at production scale.
+
+Other case studies that ground this section:
+
+| ATLAS case study | What happened | This lab's mirror |
+|---|---|---|
+| [`AML.CS0001`](https://atlas.mitre.org/studies) Botnet DGA Detection Evasion | one-string mutation collapsed a CNN DGA detector (70%→<25%) | [§5.2 evade the model](#52-attack-a--evade-the-model) |
+| [`AML.CS0000`](https://atlas.mitre.org/studies) Evasion of DL detector for malware C&C traffic | stripped HTTP headers to slip C&C traffic past a DL model | §5.2 (same idea, one layer up) |
+| [`AML.CS0002`](https://atlas.mitre.org/studies) VirusTotal Poisoning | mutated ransomware samples skewed a malware-classification pipeline | [§5.3 poison the data](#53-attack-b--poison-the-training-data) |
+| [`AML.CS0009`](https://atlas.mitre.org/studies) Tay Poisoning | a feedback loop poisoned Microsoft's chatbot in <24h | §5.3 (online version) |
+| [`AML.CS0008`](https://atlas.mitre.org/studies) ProofPoint Evasion | a shadow model enabled transferable email evasions | [§5.4 API abuse](#54-defenses--detections) |
+
+> Full write-ups, technique mappings, and how each maps to your exercises:
+> [`../atlas/CASE-STUDIES.md`](../atlas/CASE-STUDIES.md). Live catalog (source of
+> truth): <https://atlas.mitre.org/studies>. After each attack, name the case
+> study you just re-created and look up the real-world impact — that's the bridge
+> from teaching model to production risk.
 
 ---
 

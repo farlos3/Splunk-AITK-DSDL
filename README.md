@@ -118,6 +118,7 @@ Full walkthrough with success-checks and troubleshooting is in
 | **[`docs/GUIDE.md`](docs/GUIDE.md)** | The handbook — [setup](docs/GUIDE.md#1-set-up-the-lab) → [DSDL config](docs/GUIDE.md#2-configure-the-dsdl-setup-page) → [JupyterLab](docs/GUIDE.md#3-develop-models-in-jupyterlab) → [HEC](docs/GUIDE.md#4-get-data-in-with-hec) |
 | [`docs/AI-Usage-Flow.pdf`](docs/AI-Usage-Flow.pdf) | AITK vs DSDL concepts + the official architecture (printable) |
 | [`dga/README.md`](dga/README.md) | The DGA detection model — train + score walkthrough |
+| [`atlas/README.md`](atlas/README.md) | Red-team the DGA model with **MITRE ATLAS** — evasion + poisoning ([Guide §5](docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas)) |
 | [`splunk-apps/README.md`](splunk-apps/README.md) | Which Splunkbase apps to download + links |
 | [`bots-data/README.md`](bots-data/README.md) | BOTSv1 staging + how it's loaded |
 
@@ -153,6 +154,11 @@ Splunk-AITK-DSDL/
 │   ├── dga_training_domains.csv   ← labeled legit-vs-DGA training set
 │   ├── make_training_data.py      ← regenerates the CSV
 │   └── README.md                  ← full train + score walkthrough
+├── atlas/                       ← MITRE ATLAS red-team exercise (attack the DGA model)
+│   ├── craft_adversarial_domains.py  ← evasion: DGA domains shaped to look benign
+│   ├── poison_training_data.py       ← poisoning: mislabel DGA in the training set
+│   ├── CASE-STUDIES.md               ← real ATLAS incidents (AML.CS00xx) behind the attacks
+│   └── README.md                     ← evasion + poisoning walkthrough + defenses
 ├── .gitignore
 └── README.md
 ```
@@ -164,6 +170,7 @@ Splunk-AITK-DSDL/
 - [splunk/splunk-mltk-container-docker (golden images)](https://github.com/splunk/splunk-mltk-container-docker)
 - [Splunk AI Toolkit / MLTK on Splunkbase](https://splunkbase.splunk.com/app/2890)
 - [Get data with HTTP Event Collector (Splunk docs)](https://help.splunk.com/en/splunk-enterprise/get-started/get-data-in/10.4/get-data-with-http-event-collector)
+- [MITRE ATLAS — adversarial ML threat matrix](https://atlas.mitre.org/) ([the matrix](https://atlas.mitre.org/matrices/ATLAS))
 
 ---
 
