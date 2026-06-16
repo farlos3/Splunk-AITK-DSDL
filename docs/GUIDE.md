@@ -80,7 +80,7 @@ Network:  splunk-dsdl
 | Port | Service | Used for |
 |---|---|---|
 | 8000 | Splunk Web | the UI |
-| 8088 | HEC | push results from the model container back to Splunk (see [§4](#4-get-data-in-with-hec)) |
+| 8088 | HEC | push results from the model container back to Splunk (see [4](#4-get-data-in-with-hec)) |
 | 8089 | Splunk mgmt/REST | model container pulls data from Splunk; token management |
 | 5000 | DSDL model API | `fit/apply MLTKContainer` traffic (on the golden container) |
 | 8888 | JupyterLab | develop the model notebook (on the golden container) |
@@ -146,7 +146,7 @@ What it does, in order:
 5. **`docker compose up -d`** and wait for Splunk to report healthy. The same
    compose run also starts the golden container as `mltk-dev` (DEV mode, so it
    runs JupyterLab), grouped under the `splunkaitk` stack in Docker Desktop.
-6. Print the values to enter on the DSDL Setup page ([§2](#2-configure-the-dsdl-setup-page)).
+6. Print the values to enter on the DSDL Setup page ([2](#2-configure-the-dsdl-setup-page)).
 
 Useful flags:
 
@@ -187,8 +187,8 @@ If it says a dependency is missing, the app didn't install — see
 app to **global permissions** so its knowledge objects are shared (Apps → Manage
 Apps → AI Toolkit → Permissions → "All apps").
 
-➡️ **Next:** configure the DSDL Setup page — [§2](#2-configure-the-dsdl-setup-page).
-Then open JupyterLab ([§3.1](#31-open-jupyterlab)) and run the DGA POC
+➡️ **Next:** configure the DSDL Setup page — [2](#2-configure-the-dsdl-setup-page).
+Then open JupyterLab ([3.1](#31-open-jupyterlab)) and run the DGA POC
 ([`dga/README.md`](../poc/dga/README.md)):
 
 ```spl
@@ -281,7 +281,7 @@ empty — it's for K8s/OpenShift clusters, not this lab.
 | **Docker Host** | `tcp://docker-proxy:2375` | How DSDL reaches a Docker daemon to create model containers. We use the `docker-proxy` sidecar instead of `unix://var/run/docker.sock` because the splunk process (uid 41812) can't read the root-owned socket → `Permission denied`. The proxy holds the socket and exposes a scoped TCP API the splunk container reaches by name. |
 | **Endpoint URL** | `host.docker.internal` | Hostname Splunk uses to call the model container's API (`:5000`). The container runs on the **host** Docker and publishes its ports there; from inside the splunk container `localhost` is itself, so you must use `host.docker.internal` to hop to the host. **Hostname only** — no `https://`, no port (DSDL adds them). |
 | **External URL** | `localhost` | Hostname put into the **JupyterLab / TensorBoard links** you click in the browser. Your browser is on the host, where the container's `:8888`/`:6006` are published → `localhost`. |
-| **Docker network** | *(empty)* | Only matters for the LLM-RAG integration ([§6](#6-configure-llm-integrations-llm-chat--rag)). Leave **empty** and the LLM-RAG container reaches the `ollama` service via `host.docker.internal` (the approach this guide uses); set it to **`splunk-dsdl`** instead if you'd rather the container resolve `ollama` / `milvus` by name. Leave empty for the DGA POC. |
+| **Docker network** | *(empty)* | Only matters for the LLM-RAG integration ([6](#6-configure-llm-integrations-llm-chat--rag)). Leave **empty** and the LLM-RAG container reaches the `ollama` service via `host.docker.internal` (the approach this guide uses); set it to **`splunk-dsdl`** instead if you'd rather the container resolve `ollama` / `milvus` by name. Leave empty for the DGA POC. |
 | **API Workers** | *(empty = 1)* | FastAPI worker threads inside the model container. 1 is fine for a POC. |
 | **Splunk Docker Logging Endpoint / Token** | *(empty)* | Optional: ship the container's stdout/stderr to Splunk via HEC. Not needed; read logs with `docker logs <mltk-container-…>`. |
 
@@ -330,7 +330,7 @@ API traces to Splunk Observability Cloud (needs a separate account).
 | **Splunk Management Port** | `8089` |
 
 **Splunk HEC** *(enable to push results back)* — lets the container **send data
-back into Splunk** as indexed events. Full walkthrough in [§4.4](#44-hec-from-dsdl).
+back into Splunk** as indexed events. Full walkthrough in [4.4](#44-hec-from-dsdl).
 
 | Field | Value here |
 |---|---|
@@ -351,7 +351,7 @@ back into Splunk** as indexed events. Full walkthrough in [§4.4](#44-hec-from-d
    Docker Host, or Check Hostname still Enabled).
 
 After a successful save the golden container (`mltk-dev`) is already running, so
-go straight to JupyterLab — [§3](#3-develop-models-in-jupyterlab).
+go straight to JupyterLab — [3](#3-develop-models-in-jupyterlab).
 
 **What changes need a container restart?**
 
@@ -393,7 +393,7 @@ Open: **`https://localhost:8888`**  ← **HTTPS, not http**
 > **Don't** also "Start" a container from the DSDL Containers page — compose
 > already runs `mltk-dev` on ports 5000/8888/6006, and a second container would
 > collide. DSDL's `fit/apply` reaches `mltk-dev` via the Endpoint URL
-> (`host.docker.internal:5000`) you saved in [§2](#2-configure-the-dsdl-setup-page).
+> (`host.docker.internal:5000`) you saved in [2](#2-configure-the-dsdl-setup-page).
 
 ## 3.2 How notebooks become searchable algorithms
 
@@ -512,7 +512,7 @@ Full train/score walkthrough: [`dga/README.md`](../poc/dga/README.md).
 ## 3.5 Talking to Splunk from the notebook
 
 These need the matching sections enabled on the DSDL Setup page
-([§2.5](#25-optional-sections-observability--splunk-access--hec)) and a
+([2.5](#25-optional-sections-observability--splunk-access--hec)) and a
 **container restart** afterwards.
 
 - **Pull data with the interactive search bar** — `barebone_template` includes a
@@ -520,7 +520,7 @@ These need the matching sections enabled on the DSDL Setup page
   enabled (token + `host.docker.internal:8089`).
 - **Push results back** — the `SplunkHEC` helper posts events to Splunk's HEC.
   Requires **Splunk HEC** = enabled (token + `https://host.docker.internal:8088`).
-  Full HEC walkthrough: [§4](#4-get-data-in-with-hec).
+  Full HEC walkthrough: [4](#4-get-data-in-with-hec).
 
 For the DGA POC neither is required — `fit`/`apply` move the data for you.
 
@@ -567,7 +567,7 @@ indexes it. In this lab HEC matters in two directions:
   make an HTTP request (testing, scripts, integrations).
 - **Out of a DSDL container, back into Splunk** — a model writes its predictions
   back as indexed events (the optional **Splunk HEC** channel,
-  [§4.4](#44-hec-from-dsdl)). Same `HEC` arrow as section 7.2 of
+  [4.4](#44-hec-from-dsdl)). Same `HEC` arrow as section 7.2 of
   [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf).
 
 ### This lab's HEC facts (verified)
@@ -709,7 +709,7 @@ A DSDL **model container** can POST its output back into Splunk over HEC, so
 predictions become searchable events / drive dashboards and alerts.
 
 **Turn it on** — DSDL Setup page, **Splunk HEC Settings**
-([§2.5](#25-optional-sections-observability--splunk-access--hec)):
+([2.5](#25-optional-sections-observability--splunk-access--hec)):
 
 | Field | Value for this lab |
 |---|---|
@@ -797,9 +797,9 @@ onto it directly:
 | ATLAS tactic | Technique (ID) | Where it lives in this lab |
 |---|---|---|
 | ML Model Access | ML Model Inference API Access (`AML.T0040`) | DSDL serves the model at `:5000`; every `apply MLTKContainer` is a query to that inference API. |
-| ML Attack Staging | Craft Adversarial Data (`AML.T0043`) | [§5.2](#52-attack-a--evade-the-model) — DGA domains shaped to read as benign. |
+| ML Attack Staging | Craft Adversarial Data (`AML.T0043`) | [5.2](#52-attack-a--evade-the-model) — DGA domains shaped to read as benign. |
 | Defense Evasion | Evade ML Model (`AML.T0015`) | those crafted domains coming back `is_dga_predicted=0` — C2 traffic the detector misses. |
-| Persistence / ML Attack Staging | Poison Training Data (`AML.T0020`) | [§5.3](#53-attack-b--poison-the-training-data) — mislabel DGA as benign in the lookup. |
+| Persistence / ML Attack Staging | Poison Training Data (`AML.T0020`) | [5.3](#53-attack-b--poison-the-training-data) — mislabel DGA as benign in the lookup. |
 | Persistence | Backdoor ML Model (`AML.T0018`) | retraining on the poisoned lookup bakes the blind spot in. |
 | Impact | Erode ML Model Integrity (`AML.T0031`) | the poisoned model's recall on that DGA family collapses. |
 
@@ -809,7 +809,7 @@ onto it directly:
 > and "its training data" are attack surfaces with named, repeatable techniques.
 
 Both attacks load a CSV as a lookup using the same `docker cp` pattern as the
-DGA walkthrough ([`../dga/README.md` §2](../poc/dga/README.md)), then run a normal
+DGA walkthrough ([`../dga/README.md` 2](../poc/dga/README.md)), then run a normal
 `fit`/`apply`. Nothing new to install.
 
 ## 5.2 Attack A — evade the model
@@ -932,17 +932,17 @@ relevant is **`AML.CS0001` Botnet DGA Detection Evasion**: Palo Alto Networks'
 team took a public **CNN-based DGA detector** (the same kind as this lab's
 `dga_neural_network`), and by inserting a single string into each DGA domain,
 dropped detection across 16 botnet families from **>70% to under 25%**. That is
-[§5.2](#52-attack-a--evade-the-model) at production scale.
+[5.2](#52-attack-a--evade-the-model) at production scale.
 
 Other case studies that ground this section:
 
 | ATLAS case study | What happened | This lab's mirror |
 |---|---|---|
-| [`AML.CS0001`](https://atlas.mitre.org/studies) Botnet DGA Detection Evasion | one-string mutation collapsed a CNN DGA detector (70%→<25%) | [§5.2 evade the model](#52-attack-a--evade-the-model) |
-| [`AML.CS0000`](https://atlas.mitre.org/studies) Evasion of DL detector for malware C&C traffic | stripped HTTP headers to slip C&C traffic past a DL model | §5.2 (same idea, one layer up) |
-| [`AML.CS0002`](https://atlas.mitre.org/studies) VirusTotal Poisoning | mutated ransomware samples skewed a malware-classification pipeline | [§5.3 poison the data](#53-attack-b--poison-the-training-data) |
-| [`AML.CS0009`](https://atlas.mitre.org/studies) Tay Poisoning | a feedback loop poisoned Microsoft's chatbot in <24h | §5.3 (online version) |
-| [`AML.CS0008`](https://atlas.mitre.org/studies) ProofPoint Evasion | a shadow model enabled transferable email evasions | [§5.4 API abuse](#54-defenses--detections) |
+| [`AML.CS0001`](https://atlas.mitre.org/studies) Botnet DGA Detection Evasion | one-string mutation collapsed a CNN DGA detector (70%→<25%) | [5.2 evade the model](#52-attack-a--evade-the-model) |
+| [`AML.CS0000`](https://atlas.mitre.org/studies) Evasion of DL detector for malware C&C traffic | stripped HTTP headers to slip C&C traffic past a DL model | 5.2 (same idea, one layer up) |
+| [`AML.CS0002`](https://atlas.mitre.org/studies) VirusTotal Poisoning | mutated ransomware samples skewed a malware-classification pipeline | [5.3 poison the data](#53-attack-b--poison-the-training-data) |
+| [`AML.CS0009`](https://atlas.mitre.org/studies) Tay Poisoning | a feedback loop poisoned Microsoft's chatbot in <24h | 5.3 (online version) |
+| [`AML.CS0008`](https://atlas.mitre.org/studies) ProofPoint Evasion | a shadow model enabled transferable email evasions | [5.4 API abuse](#54-defenses--detections) |
 
 > Full write-ups, technique mappings, and how each maps to your exercises:
 > [`../atlas/CASE-STUDIES.md`](../atlas/CASE-STUDIES.md). Live catalog (source of
@@ -953,7 +953,7 @@ Other case studies that ground this section:
 ## 5.6 Red-team the LLM assistant (prompt injection)
 
 Sections 5.2–5.3 attacked the *DGA classifier*. The **LLM Integrations** feature
-([§6](#6-configure-llm-integrations-llm-chat--rag)) adds a second, very different
+([6](#6-configure-llm-integrations-llm-chat--rag)) adds a second, very different
 attack surface to the same lab — and ATLAS has techniques aimed right at it. The
 key fact: **LLM Chat feeds your search results into the model**, so any text an
 attacker can land in your logs becomes model input.
@@ -967,7 +967,7 @@ attacker can land in your logs becomes model input.
 | LLM Data Leakage (`AML.T0057`) | coaxing the assistant to reveal data or its own system prompt. |
 
 **Try indirect injection — the lab's most realistic one.** Plant a poisoned event
-via HEC ([§4.3](#43-send-data-to-hec)), then summarise it in LLM Chat:
+via HEC ([4.3](#43-send-data-to-hec)), then summarise it in LLM Chat:
 
 ```bash
 curl -k https://localhost:8088/services/collector/event \
@@ -979,11 +979,11 @@ In **LLM Chat**, run `index=main sourcetype=hec:test | head 20` and ask *"summar
 these events"*. If the reply is `PWNED` instead of a summary, the **data** steered
 the model — that's `AML.T0051.001` end to end, without touching the model itself.
 
-**Defenses** (ATLAS mitigations, same spirit as [§5.4](#54-defenses--detections)):
+**Defenses** (ATLAS mitigations, same spirit as [5.4](#54-defenses--detections)):
 treat retrieved log text as **untrusted data, not instructions** (delimit it, and
 tell the model to ignore commands inside it); keep any MCP tools
 **least-privilege / read-only** so a hijacked prompt can't act; and never put
-secrets in the system prompt. As in §5.4, a small local model is easy to steer —
+secrets in the system prompt. As in 5.4, a small local model is easy to steer —
 the transferable lesson is that **the moment an LLM reads your logs, your logs
 become an injection vector.**
 
@@ -1026,7 +1026,7 @@ Chat needs — the rest are for RAG):
 |---|---|---|
 | LLM Service | `Ollama` | |
 | Enable Ollama | `Yes` | |
-| Ollama URL | `http://host.docker.internal:11434` | ⚠️ **not** the default `http://ollama:11434` — the LLM-RAG container is a host-Docker sibling that may not share a network with `ollama`, but port 11434 is published on the host. (Use `ollama` only if Docker network = `splunk-dsdl`, [§2.2](#22-container-environment-docker).) |
+| Ollama URL | `http://host.docker.internal:11434` | ⚠️ **not** the default `http://ollama:11434` — the LLM-RAG container is a host-Docker sibling that may not share a network with `ollama`, but port 11434 is published on the host. (Use `ollama` only if Docker network = `splunk-dsdl`, [2.2](#22-container-environment-docker).) |
 | Model Name | `llama3.2:3b` | must match `docker exec ollama ollama list` |
 
 **Save** → on **LLM Chat** the *"Error loading LLM options"* control becomes a

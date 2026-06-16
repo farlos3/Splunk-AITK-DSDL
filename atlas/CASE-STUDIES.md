@@ -3,7 +3,7 @@
 [ATLAS case studies](https://atlas.mitre.org/studies) (`AML.CS00xx`) are
 documented, real-world attacks on AI/ML systems — each one mapped to the same
 ATLAS tactics/techniques you exercised in
-[`../docs/GUIDE.md` §5](../docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas).
+[`../docs/GUIDE.md` 5](../docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas).
 They turn the lab's toy attacks into "this actually happened to a shipped
 product".
 
@@ -22,7 +22,7 @@ poisoning and shadow-model patterns at production scale.
 
 ### `AML.CS0001` — Botnet DGA Detection Evasion  ⭐ this is your lab
 
-**The real one behind [§5.2 (evade the model)](../docs/GUIDE.md#52-attack-a--evade-the-model).**
+**The real one behind [5.2 (evade the model)](../docs/GUIDE.md#52-attack-a--evade-the-model).**
 Palo Alto Networks' AI research team took a **publicly available CNN-based DGA
 detector** — the same architecture class as this lab's `dga_neural_network` —
 and tested it against ~50M domains from 64 botnet families. It scored >70% on 16
@@ -54,7 +54,7 @@ longer matched what the model learned.
 
 ---
 
-## Poisoning at production scale → [§5.3](../docs/GUIDE.md#53-attack-b--poison-the-training-data)
+## Poisoning at production scale → [5.3](../docs/GUIDE.md#53-attack-b--poison-the-training-data)
 
 ### `AML.CS0002` — VirusTotal Poisoning
 
@@ -67,7 +67,7 @@ downstream malware detection.
 - **Maps to your exercise:** [`poison_training_data.py`](poison_training_data.py)
   injects mislabeled DGA into the lookup; VirusTotal poisoning is the same idea
   against a pipeline that ingests untrusted, internet-sourced samples — exactly
-  why §5.4 says *govern and validate the training data*.
+  why 5.4 says *govern and validate the training data*.
 
 ### `AML.CS0009` — Tay Poisoning
 
@@ -98,7 +98,7 @@ to and evaded the live system.
 
 - ATLAS: Create Proxy AI Model → Craft Adversarial Data → Evade AI Model.
 - **Why included:** these show the next step beyond this lab — when an attacker
-  can *query* your model ([§5.4 API abuse](../docs/GUIDE.md#54-defenses--detections),
+  can *query* your model ([5.4 API abuse](../docs/GUIDE.md#54-defenses--detections),
   `AML.T0040`/`AML.T0024`), they can clone its behavior and craft evasions
   offline. Rate-limiting and not leaking confidence scores is the defense.
 
@@ -126,13 +126,13 @@ A quick index so you can browse the rest at <https://atlas.mitre.org/studies>.
 
 ## How to use these in the lab
 
-1. Read [`AML.CS0001`](https://atlas.mitre.org/studies) before §5.2 — you're
+1. Read [`AML.CS0001`](https://atlas.mitre.org/studies) before 5.2 — you're
    reproducing it in miniature.
 2. After each attack, ask "**which case study did I just re-create, and what was
    its real-world impact?**" — that's the bridge from teaching model to
    production risk.
 3. For defense work, each case study lists the **mitigations** the vendor
-   adopted; pull those into your §5.4 controls and your Splunk detections.
+   adopted; pull those into your 5.4 controls and your Splunk detections.
 
 ---
 

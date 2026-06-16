@@ -75,7 +75,7 @@ Full walkthrough with success-checks and troubleshooting is in
 1. **Stage the 3 Splunkbase apps** into [`splunk-apps/`](splunk-apps/) — PSC
    *Linux 64-bit* (app 2882) · AITK (app 2890) · DSDL (app 4607). Direct links
    in [`splunk-apps/README.md`](splunk-apps/README.md).
-   → [Guide §1.3](docs/GUIDE.md#13-stage-the-three-splunk-apps)
+   → [Guide 1.3](docs/GUIDE.md#13-stage-the-three-splunk-apps)
 
 2. **Bring it up** from the repo root — installs the apps, loads BOTSv1, and
    starts Splunk + the `mltk-dev` golden container:
@@ -85,16 +85,16 @@ Full walkthrough with success-checks and troubleshooting is in
    ```
 
    Then open <http://localhost:8000> — `admin` / password from `docker/.env`
-   (default `p@ssw0rd`). → [Guide §1.4](docs/GUIDE.md#14-run-the-setup-script)
+   (default `p@ssw0rd`). → [Guide 1.4](docs/GUIDE.md#14-run-the-setup-script)
 
 3. **Point DSDL at Docker** (Setup page → Docker): Docker Host
    `tcp://docker-proxy:2375`, Endpoint URL `host.docker.internal`, External
    URL `localhost`, Check Hostname `Disabled` → **Test & Save**.
-   → [Guide §2](docs/GUIDE.md#2-configure-the-dsdl-setup-page)
+   → [Guide 2](docs/GUIDE.md#2-configure-the-dsdl-setup-page)
 
 4. **Develop & run** — open JupyterLab at **`https://localhost:8888`** (HTTPS;
    password `splunkdsdl`), then run the DGA POC.
-   → [Guide §3](docs/GUIDE.md#3-develop-models-in-jupyterlab) ·
+   → [Guide 3](docs/GUIDE.md#3-develop-models-in-jupyterlab) ·
    [`dga/README.md`](dga/README.md)
 
    ```spl
@@ -109,7 +109,7 @@ Full walkthrough with success-checks and troubleshooting is in
 
 > **Reset / teardown** (`./docker/reset.sh`, `--full`, `down -v`) and a full
 > troubleshooting table live in
-> [Guide §1.6–1.7](docs/GUIDE.md#16-reset--teardown).
+> [Guide 1.6–1.7](docs/GUIDE.md#16-reset--teardown).
 
 ## Documentation
 
@@ -118,7 +118,7 @@ Full walkthrough with success-checks and troubleshooting is in
 | **[`docs/GUIDE.md`](docs/GUIDE.md)** | The handbook — [setup](docs/GUIDE.md#1-set-up-the-lab) → [DSDL config](docs/GUIDE.md#2-configure-the-dsdl-setup-page) → [JupyterLab](docs/GUIDE.md#3-develop-models-in-jupyterlab) → [HEC](docs/GUIDE.md#4-get-data-in-with-hec) |
 | [`docs/AI-Usage-Flow.pdf`](docs/AI-Usage-Flow.pdf) | AITK vs DSDL concepts + the official architecture (printable) |
 | [`dga/README.md`](dga/README.md) | The DGA detection model — train + score walkthrough |
-| [`atlas/README.md`](atlas/README.md) | Red-team the DGA model with **MITRE ATLAS** — evasion + poisoning ([Guide §5](docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas)) |
+| [`atlas/README.md`](atlas/README.md) | Red-team the DGA model with **MITRE ATLAS** — evasion + poisoning ([Guide 5](docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas)) |
 | [`splunk-apps/README.md`](splunk-apps/README.md) | Which Splunkbase apps to download + links |
 | [`bots-data/README.md`](bots-data/README.md) | BOTSv1 staging + how it's loaded |
 
@@ -127,7 +127,7 @@ Full walkthrough with success-checks and troubleshooting is in
 | Port | Service | Notes |
 |---|---|---|
 | 8000 | Splunk Web | http://localhost:8000 |
-| 8088 | HTTP Event Collector | HTTPS; token in `docker/.env` ([Guide §4](docs/GUIDE.md#4-get-data-in-with-hec)) |
+| 8088 | HTTP Event Collector | HTTPS; token in `docker/.env` ([Guide 4](docs/GUIDE.md#4-get-data-in-with-hec)) |
 | 8089 | Splunk REST / Mgmt | DSDL model container calls back here |
 | 9997 | Forwarder receiver | for a future Universal Forwarder |
 | 5000 | DSDL model API | on the golden container (`mltk-dev`) |

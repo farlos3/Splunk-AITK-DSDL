@@ -11,7 +11,7 @@ machine — authorized, self-contained, defensive learning. Two hands-on attacks
 each mapped to ATLAS, plus the defenses.
 
 > Full narrative walkthrough with success-checks lives in
-> [`../docs/GUIDE.md` §5](../docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas).
+> [`../docs/GUIDE.md` 5](../docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas).
 > This README is the folder map + the commands.
 
 ## How this lab maps to the ATLAS matrix

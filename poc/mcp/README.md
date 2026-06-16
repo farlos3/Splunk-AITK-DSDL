@@ -11,15 +11,15 @@ connect **MCP** so the model can call Splunk itself as a tool.
         │   LLM Chat / Querying LLM assistants │
         ▼                                      ▼
    ┌──────────────── DSDL LLM-RAG container ────────────────┐
-   │  serves the LLM / RAG / MCP endpoints the UI calls      │
-   └────────────────────────────┬───────────────────────────┘
+   │  serves the LLM / RAG / MCP endpoints the UI calls     │
+   └─────────────────────────────┬──────────────────────────┘
                                  │  http://host.docker.internal:11434
                                  ▼
                     ollama  (compose service)  →  llama3.2:3b
 ```
 
 This README is the **walkthrough**. The field-by-field config reference it points
-to lives in [`../../docs/GUIDE.md` §6](../../docs/GUIDE.md#6-configure-llm-integrations-llm-chat--rag).
+to lives in [`../../docs/GUIDE.md` 6](../../docs/GUIDE.md#6-configure-llm-integrations-llm-chat--rag).
 
 ---
 
@@ -28,7 +28,7 @@ to lives in [`../../docs/GUIDE.md` §6](../../docs/GUIDE.md#6-configure-llm-inte
 1. The lab is up and healthy (`../../setup.sh` finished) and you can log into
    Splunk at <http://localhost:8000>.
 2. The DSDL **Setup** page is configured (Docker mode) — see
-   [`../../docs/GUIDE.md` §2](../../docs/GUIDE.md#2-configure-the-dsdl-setup-page).
+   [`../../docs/GUIDE.md` 2](../../docs/GUIDE.md#2-configure-the-dsdl-setup-page).
 
 ## Step 1 — Start Ollama and pull a model
 
@@ -80,7 +80,7 @@ host-Docker sibling that may not share a network with the `ollama` service, so t
 name won't resolve — but port 11434 is published on the host, so
 `host.docker.internal` always reaches it. Full reasoning + the alternative
 (Docker network = `splunk-dsdl`) in
-[`../../docs/GUIDE.md` §6.2](../../docs/GUIDE.md#62-setup-llm-integrations-page).
+[`../../docs/GUIDE.md` 6.2](../../docs/GUIDE.md#62-setup-llm-integrations-page).
 
 ## Step 4 — Chat over your data (LLM Chat)
 
@@ -178,7 +178,7 @@ After exploring, paste a compact result set and ask for the write-up:
 > **Flip side — attack the assistant.** Because LLM Chat ingests whatever your
 > search returns, log data itself is an injection vector. Walk through indirect
 > prompt injection on this same lab in
-> [`../../docs/GUIDE.md` §5.6](../../docs/GUIDE.md#56-red-team-the-llm-assistant-prompt-injection).
+> [`../../docs/GUIDE.md` 5.6](../../docs/GUIDE.md#56-red-team-the-llm-assistant-prompt-injection).
 
 ## Write it yourself in JupyterLab (full control)
 
@@ -190,7 +190,7 @@ prompt, exactly how Splunk data is shaped into context, temperature, structured
 dynamic path the UI can't give you.
 
 Open **`https://localhost:8888`** (the `mltk-dev` container — see
-[`../../docs/GUIDE.md` §3](../../docs/GUIDE.md#3-develop-models-in-jupyterlab) for
+[`../../docs/GUIDE.md` 3](../../docs/GUIDE.md#3-develop-models-in-jupyterlab) for
 the JupyterLab dev loop) and work in a notebook. `requests`, `splunklib`, and
 `pandas` are already installed.
 
@@ -281,7 +281,7 @@ nomic-embed-text`), store vectors, and retrieve before prompting. To use a cloud
 provider instead, point an OpenAI client at `http://ollama:11434/v1` or the real
 provider — same `chat()` shape.
 
-> The §5.6 lesson still applies here, and it's now *your* job: log text you place
+> The 5.6 lesson still applies here, and it's now *your* job: log text you place
 > in `context` is untrusted — keep it clearly delimited and instructed-against, as
 > the system prompt above does.
 
@@ -307,7 +307,7 @@ Treat MCP as the next step after plain chat works.
 …) so the model retrieves relevant documents before answering. It's the heavier
 path — Milvus is its own container stack. Start with LLM Chat / Standalone LLM;
 add RAG only when you specifically want retrieval. Details:
-[`../../docs/GUIDE.md` §6.3](../../docs/GUIDE.md#63-rag--mcp-optional).
+[`../../docs/GUIDE.md` 6.3](../../docs/GUIDE.md#63-rag--mcp-optional).
 
 ## Troubleshooting
 
@@ -321,7 +321,7 @@ add RAG only when you specifically want retrieval. Details:
 | `curl localhost:11434` refused | `docker compose -f docker/docker-compose.yml up -d ollama` |
 
 Full troubleshooting table:
-[`../../docs/GUIDE.md` §6.8](../../docs/GUIDE.md#68-llm-troubleshooting).
+[`../../docs/GUIDE.md` 6.8](../../docs/GUIDE.md#68-llm-troubleshooting).
 
 ---
 
