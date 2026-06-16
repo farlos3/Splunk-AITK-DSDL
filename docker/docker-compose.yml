@@ -118,6 +118,33 @@ services:
       - mltk-container-data:/srv
     restart: unless-stopped
 
+  # Local LLM backend for the DSDL "LLM Integrations" assistants (LLM Chat,
+  # Querying LLM, RAG). Fully local, no API key, no per-token cost — the right
+  # default for a teaching sandbox. The DSDL LLM-RAG container (which you start
+  # from DSDL -> Container Management) talks to this over the published port via
+  # host.docker.internal, the SAME pattern Splunk uses to reach model
+  # containers (see notes above). That avoids coupling to whichever network
+  # DSDL spawns the LLM-RAG container on.
+  #
+  # In the DSDL "Setup LLM Integrations" page set:
+  #   LLM Service = Ollama,  Enable Ollama = Yes
+  #   Ollama URL  = http://host.docker.internal:11434
+  #   Model Name  = the model you pulled below (default: llama3.2:3b)
+  #
+  # After `docker compose up`, pull a model (small = fast on CPU):
+  #   docker exec ollama ollama pull llama3.2:3b
+  # CPU-only by default; works everywhere. For GPU, add a `deploy.resources`
+  # reservation — not needed for the POC.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    hostname: ollama
+    ports:
+      - "11434:11434"      # Ollama HTTP API
+    volumes:
+      - ollama-data:/root/.ollama   # cached model weights survive restarts
+    restart: unless-stopped
+
 # Predictable network name so the splunk container can resolve the
 # docker-proxy by name, and so a DSDL-spawned container can optionally join
 # it. In the DSDL Setup page, set the container network to "splunk-dsdl"
@@ -131,3 +158,4 @@ volumes:
   splunk-var:
   splunk-botsv1:
   mltk-container-data:
+  ollama-data:
