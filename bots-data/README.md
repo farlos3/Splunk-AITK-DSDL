@@ -74,7 +74,7 @@ index=botsv1 earliest=0 | stats count by sourcetype
 
 Expect millions of events across `stream:dns`, `WinEventLog:Security`,
 `fgt_traffic`, Sysmon, `iis`, and more. The `stream:dns` sourcetype is what the
-DGA POC scores — see [`../dga/README.md`](../dga/README.md).
+DGA POC scores — see [`../poc/dga/README.md`](../poc/dga/README.md).
 
 ---
 

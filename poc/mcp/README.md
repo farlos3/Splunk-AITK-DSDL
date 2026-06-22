@@ -19,7 +19,14 @@ connect **MCP** so the model can call Splunk itself as a tool.
 ```
 
 This README is the **walkthrough**. The field-by-field config reference it points
-to lives in [`../../docs/GUIDE.md` 6](../../docs/GUIDE.md#6-configure-llm-integrations-llm-chat--rag).
+to lives in [`../../docs/GUIDE.md` 5](../../docs/GUIDE.md#5-llm-integrations-and-mcp).
+
+> **Where this sits — MCP is a *layer*, not a separate thing.** Steps 1–4 stand up
+> the **standalone local LLM**: LLM Chat reasons over the rows your search returns.
+> **Step 5 adds MCP**, which hands that same LLM Splunk *as a tool* so it fetches
+> its own data — the agentic upgrade. The two combine into one capability, and
+> ATLAS then red-teams it in
+> [`../../docs/GUIDE.md` 6.4](../../docs/GUIDE.md#64-attack-the-llm--mcp-assistant).
 
 ---
 
@@ -80,7 +87,7 @@ host-Docker sibling that may not share a network with the `ollama` service, so t
 name won't resolve — but port 11434 is published on the host, so
 `host.docker.internal` always reaches it. Full reasoning + the alternative
 (Docker network = `splunk-dsdl`) in
-[`../../docs/GUIDE.md` 6.2](../../docs/GUIDE.md#62-setup-llm-integrations-page).
+[`../../docs/GUIDE.md` 5.2](../../docs/GUIDE.md#52-setup-llm-integrations-page).
 
 ## Step 4 — Chat over your data (LLM Chat)
 
@@ -178,7 +185,7 @@ After exploring, paste a compact result set and ask for the write-up:
 > **Flip side — attack the assistant.** Because LLM Chat ingests whatever your
 > search returns, log data itself is an injection vector. Walk through indirect
 > prompt injection on this same lab in
-> [`../../docs/GUIDE.md` 5.6](../../docs/GUIDE.md#56-red-team-the-llm-assistant-prompt-injection).
+> [`../../docs/GUIDE.md` 6.4](../../docs/GUIDE.md#64-attack-the-llm--mcp-assistant).
 
 ## Write it yourself in JupyterLab (full control)
 
@@ -281,7 +288,7 @@ nomic-embed-text`), store vectors, and retrieve before prompting. To use a cloud
 provider instead, point an OpenAI client at `http://ollama:11434/v1` or the real
 provider — same `chat()` shape.
 
-> The 5.6 lesson still applies here, and it's now *your* job: log text you place
+> The 6.4 lesson still applies here, and it's now *your* job: log text you place
 > in `context` is untrusted — keep it clearly delimited and instructed-against, as
 > the system prompt above does.
 
@@ -307,7 +314,7 @@ Treat MCP as the next step after plain chat works.
 …) so the model retrieves relevant documents before answering. It's the heavier
 path — Milvus is its own container stack. Start with LLM Chat / Standalone LLM;
 add RAG only when you specifically want retrieval. Details:
-[`../../docs/GUIDE.md` 6.3](../../docs/GUIDE.md#63-rag--mcp-optional).
+[`../../docs/GUIDE.md` 5.4](../../docs/GUIDE.md#54-rag-optional).
 
 ## Troubleshooting
 
@@ -319,9 +326,6 @@ add RAG only when you specifically want retrieval. Details:
 | Times out / spins | Raise `max_fit_time` to 7200 and/or use a smaller model; first call is slowest (model loads into RAM). |
 | Weak answers | `llama3.2:3b` is small — pull `llama3.1:8b` and switch Model Name. |
 | `curl localhost:11434` refused | `docker compose -f docker/docker-compose.yml up -d ollama` |
-
-Full troubleshooting table:
-[`../../docs/GUIDE.md` 6.8](../../docs/GUIDE.md#68-llm-troubleshooting).
 
 ---
 
