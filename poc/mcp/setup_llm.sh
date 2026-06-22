@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Bring up the local Ollama backend for DSDL's LLM Integrations and pull a model.
 #
-# This is just the §6.1 commands wrapped up: it starts the `ollama` compose
+# This is just the §5.1 commands wrapped up: it starts the `ollama` compose
 # service, waits for its API, pulls a model, and smoke-tests it. The DSDL side
 # (start the LLM-RAG container, fill the Setup LLM Integrations page) is still
-# done in the UI — see ../../docs/GUIDE.md#6-configure-llm-integrations-llm-chat--rag
+# done in the UI — see ../../docs/GUIDE.md#5-llm-integrations-and-mcp
 # and ./README.md.
 #
 # Usage:
