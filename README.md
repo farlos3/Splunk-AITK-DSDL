@@ -56,6 +56,38 @@ under the `splunkaitk` stack. The `docker-proxy` sidecar is only there so
 DSDL's *Test & Save* can validate the Docker connection.
 [More on the architecture → `docs/AI-Usage-Flow.pdf`](docs/AI-Usage-Flow.pdf).
 
+## The AI pieces — build them, then break them
+
+Beyond the DGA POC, this lab teaches three AI building blocks. They are **not**
+peers — two combine into one capability, and the third is a lens laid over it:
+
+| Piece | Stands alone? | Role |
+|---|---|---|
+| **Local LLM** (Ollama) | Yes — LLM Chat reasons over your search rows | the engine |
+| **MCP** | **No** — a layer *on top of* the LLM that hands it Splunk as a tool | makes the LLM agentic |
+| **MITRE ATLAS** | n/a — a framework, not a running service | the red-team lens |
+
+The whole lab follows one arc — **BUILD → BREAK**:
+
+- **BUILD** two capabilities: the DGA **classifier**
+  ([`poc/dga/`](poc/dga/README.md)) and the **local LLM + MCP** assistant
+  ([`poc/mcp/`](poc/mcp/README.md)). The LLM alone reads what you paste in; add
+  **MCP** and it runs its own Splunk searches — the agentic "SOC assistant" that
+  is the hero of the LLM track.
+- **BREAK** both with **MITRE ATLAS** ([`atlas/`](atlas/README.md)) — one lens,
+  two targets: the *classifier* (evade, poison) and the *LLM + MCP* assistant
+  (prompt injection, **plugin compromise**, data leakage).
+
+| Capability you BUILD | How | How ATLAS BREAKS it |
+|---|---|---|
+| DGA classifier | `fit` / `apply MLTKContainer` | Evade `AML.T0015`, Poison `AML.T0020` |
+| Local LLM (Ollama) | LLM Chat over results | Prompt injection `AML.T0051`, Jailbreak `AML.T0054` |
+| **LLM + MCP** (hero) | LLM calls Splunk as a tool | **Plugin compromise `AML.T0053`** — only reachable once MCP is connected |
+
+Walkthroughs: build the LLM+MCP assistant in
+[Guide 5](docs/GUIDE.md#5-llm-integrations-and-mcp); red-team both tracks in
+[Guide 6](docs/GUIDE.md#6-red-team-with-mitre-atlas).
+
 ## Prerequisites
 
 - **Docker Desktop** running (Linux containers / WSL2 backend on Windows).
@@ -95,7 +127,7 @@ Full walkthrough with success-checks and troubleshooting is in
 4. **Develop & run** — open JupyterLab at **`https://localhost:8888`** (HTTPS;
    password `splunkdsdl`), then run the DGA POC.
    → [Guide 3](docs/GUIDE.md#3-develop-models-in-jupyterlab) ·
-   [`dga/README.md`](dga/README.md)
+   [`poc/dga/README.md`](poc/dga/README.md)
 
    ```spl
    | inputlookup dga_training_domains.csv
@@ -115,10 +147,11 @@ Full walkthrough with success-checks and troubleshooting is in
 
 | Doc | What's in it |
 |---|---|
-| **[`docs/GUIDE.md`](docs/GUIDE.md)** | The handbook — [setup](docs/GUIDE.md#1-set-up-the-lab) → [DSDL config](docs/GUIDE.md#2-configure-the-dsdl-setup-page) → [JupyterLab](docs/GUIDE.md#3-develop-models-in-jupyterlab) → [HEC](docs/GUIDE.md#4-get-data-in-with-hec) |
+| **[`docs/GUIDE.md`](docs/GUIDE.md)** | The handbook — [setup](docs/GUIDE.md#1-set-up-the-lab) → [DSDL config](docs/GUIDE.md#2-configure-the-dsdl-setup-page) → [JupyterLab](docs/GUIDE.md#3-develop-models-in-jupyterlab) → [HEC](docs/GUIDE.md#4-get-data-in-with-hec) → [LLM + MCP](docs/GUIDE.md#5-llm-integrations-and-mcp) → [red-team with ATLAS](docs/GUIDE.md#6-red-team-with-mitre-atlas) |
 | [`docs/AI-Usage-Flow.pdf`](docs/AI-Usage-Flow.pdf) | AITK vs DSDL concepts + the official architecture (printable) |
-| [`dga/README.md`](dga/README.md) | The DGA detection model — train + score walkthrough |
-| [`atlas/README.md`](atlas/README.md) | Red-team the DGA model with **MITRE ATLAS** — evasion + poisoning ([Guide 5](docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas)) |
+| [`poc/dga/README.md`](poc/dga/README.md) | **BUILD** — the DGA classifier: train + score walkthrough |
+| [`poc/mcp/README.md`](poc/mcp/README.md) | **BUILD** — the local LLM + MCP assistant: LLM Chat over BOTSv1, then MCP tool-use |
+| [`atlas/README.md`](atlas/README.md) | **BREAK** — **MITRE ATLAS** as the red-team lens over *both* targets: the classifier (evade + poison) and the LLM + MCP assistant ([Guide 6](docs/GUIDE.md#6-red-team-with-mitre-atlas)) |
 | [`splunk-apps/README.md`](splunk-apps/README.md) | Which Splunkbase apps to download + links |
 | [`bots-data/README.md`](bots-data/README.md) | BOTSv1 staging + how it's loaded |
 
@@ -149,16 +182,20 @@ Splunk-AITK-DSDL/
 ├── splunk-apps/                ← stage Splunkbase .tgz here (gitignored payloads)
 │   └── README.md               ← which apps to download + direct links
 ├── bots-data/botsv1/           ← BOTSv1 staging (download + extract live here)
-├── dga/                        ← the DGA detection POC
-│   ├── dga_neural_network.ipynb   ← DSDL model notebook (char-level CNN)
-│   ├── dga_training_domains.csv   ← labeled legit-vs-DGA training set
-│   ├── make_training_data.py      ← regenerates the CSV
-│   └── README.md                  ← full train + score walkthrough
-├── atlas/                       ← MITRE ATLAS red-team exercise (attack the DGA model)
+├── poc/                         ← BUILD: the two AI capabilities
+│   ├── dga/                        ← the DGA classifier POC
+│   │   ├── dga_neural_network.ipynb   ← DSDL model notebook (char-level CNN)
+│   │   ├── dga_training_domains.csv   ← labeled legit-vs-DGA training set
+│   │   ├── make_training_data.py      ← regenerates the CSV
+│   │   └── README.md                  ← full train + score walkthrough
+│   └── mcp/                        ← the local LLM + MCP assistant
+│       ├── setup_llm.sh               ← start Ollama, pull the model, smoke-test
+│       └── README.md                  ← LLM Chat over BOTSv1 + MCP walkthrough
+├── atlas/                       ← BREAK: MITRE ATLAS red-team (classifier + LLM/MCP)
 │   ├── craft_adversarial_domains.py  ← evasion: DGA domains shaped to look benign
 │   ├── poison_training_data.py       ← poisoning: mislabel DGA in the training set
 │   ├── CASE-STUDIES.md               ← real ATLAS incidents (AML.CS00xx) behind the attacks
-│   └── README.md                     ← evasion + poisoning walkthrough + defenses
+│   └── README.md                     ← evasion + poisoning + LLM/MCP red-team + defenses
 ├── .gitignore
 └── README.md
 ```

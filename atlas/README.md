@@ -1,20 +1,39 @@
-# Red-teaming the DGA model with MITRE ATLAS
+# Red-teaming the lab's AI with MITRE ATLAS
 
 [MITRE ATLAS](https://atlas.mitre.org/) (*Adversarial Threat Landscape for
 Artificial-Intelligence Systems*) is ATT&CK's sibling for ML/AI systems — the
-same tactic→technique structure, but for attacks **against the model itself**:
-evading it, poisoning its training data, stealing it, abusing its API.
+same tactic→technique structure, but for attacks **against the AI itself**:
+evading a model, poisoning its training data, stealing it, or steering an LLM
+through its inputs.
 
-This folder turns the lab's [DGA detector](../dga/README.md) into the *target*
-of an ATLAS exercise. You attack a model you trained yourself, on your own
-machine — authorized, self-contained, defensive learning. Two hands-on attacks,
-each mapped to ATLAS, plus the defenses.
+ATLAS is the lab's **BREAK** track — one lens over **two targets**: the **DGA
+classifier** ([`../poc/dga/`](../poc/dga/README.md)) and the **LLM + MCP
+assistant** ([`../poc/mcp/`](../poc/mcp/README.md)). You attack systems you built
+yourself, on your own machine — authorized, self-contained, defensive learning.
+**This folder holds the classifier attacks** (evasion + poisoning, each mapped to
+ATLAS, plus defenses); the LLM attacks live in the guide.
 
 > Full narrative walkthrough with success-checks lives in
-> [`../docs/GUIDE.md` 5](../docs/GUIDE.md#5-red-team-the-model-with-mitre-atlas).
+> [`../docs/GUIDE.md` 6](../docs/GUIDE.md#6-red-team-with-mitre-atlas).
 > This README is the folder map + the commands.
 
-## How this lab maps to the ATLAS matrix
+## ATLAS targets two things in this lab
+
+ATLAS is a **lens**, not a script — and this lab gives it two targets. This folder
+covers **Target A**; the LLM target is built and attacked in the guide.
+
+| Target | What it is | Attacks | Where |
+|---|---|---|---|
+| **A — the classifier** | the DGA detector you trained ([`../poc/dga/`](../poc/dga/README.md)) | evade, poison | **this folder** + [Guide 6.2–6.3](../docs/GUIDE.md#62-attack-the-classifier--evade) |
+| **B — the LLM + MCP assistant** | the local-LLM agent ([`../poc/mcp/`](../poc/mcp/README.md)) | prompt injection, **plugin compromise** (`AML.T0053`), jailbreak, data leakage | [Guide 6.4](../docs/GUIDE.md#64-attack-the-llm--mcp-assistant) |
+
+> **Target B in one line:** because LLM Chat feeds your *search results* into the
+> model, any text an attacker lands in your logs is model input — and once **MCP**
+> connects the LLM to Splunk tools, an injected instruction can drive *actions*,
+> not just answers (`AML.T0053`). Walkthrough:
+> [Guide 6.4](../docs/GUIDE.md#64-attack-the-llm--mcp-assistant).
+
+## Target A — how the classifier maps to the ATLAS matrix
 
 | ATLAS tactic | Technique (ID) | In this lab |
 |---|---|---|
@@ -50,7 +69,7 @@ regenerate them with `python <script>.py`.
 ## Prereqs
 
 The DGA POC is already working: `dga_model` is trained and you can run
-`| ... | apply dga_model` (see [`../dga/README.md`](../dga/README.md)). Loading a
+`| ... | apply dga_model` (see [`../poc/dga/README.md`](../poc/dga/README.md)). Loading a
 CSV as a lookup uses the same `docker cp` trick as the DGA walkthrough.
 
 ---

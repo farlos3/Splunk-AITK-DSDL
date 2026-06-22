@@ -10,7 +10,7 @@ you what success looks like before you move on.
   from **bash** — `./setup.sh` / `./docker/reset.sh` (Git Bash on Windows, or a
   normal shell on macOS/Linux/WSL).
 - The concrete goal: a working **DGA-detection** demo on **BOTSv1** —
-  see [`dga/README.md`](../poc/dga/README.md) for the model walkthrough, and
+  see [`poc/dga/README.md`](../poc/dga/README.md) for the model walkthrough, and
   [`AI-Usage-Flow.pdf`](AI-Usage-Flow.pdf) for the AITK-vs-DSDL concepts.
 
 ---
@@ -45,17 +45,53 @@ you what success looks like before you move on.
    - [4.3 Send data to HEC](#43-send-data-to-hec)
    - [4.4 HEC from DSDL](#44-hec-from-dsdl)
    - [4.5 HEC reference & troubleshooting](#45-hec-reference--troubleshooting)
-5. [**Red-team the model with MITRE ATLAS**](#5-red-team-the-model-with-mitre-atlas) — attack the DGA detector
-   - [5.1 What ATLAS is & how it maps here](#51-what-atlas-is--how-it-maps-here)
-   - [5.2 Attack A — evade the model](#52-attack-a--evade-the-model)
-   - [5.3 Attack B — poison the training data](#53-attack-b--poison-the-training-data)
-   - [5.4 Defenses & detections](#54-defenses--detections)
-   - [5.5 Real-world ATLAS case studies](#55-real-world-atlas-case-studies)
-   - [5.6 Red-team the LLM assistant (prompt injection)](#56-red-team-the-llm-assistant-prompt-injection)
-6. [**Configure LLM Integrations**](#6-configure-llm-integrations-llm-chat--rag) — local Ollama backend for LLM Chat / RAG / MCP
-   - [6.1 Bring up the backend](#61-bring-up-the-backend)
-   - [6.2 Setup LLM Integrations page](#62-setup-llm-integrations-page)
-   - [6.3 RAG & MCP (optional)](#63-rag--mcp-optional)
+5. [**LLM Integrations and MCP**](#5-llm-integrations-and-mcp) — local Ollama backend, LLM Chat, and the MCP tool layer
+   - [5.1 Bring up the backend](#51-bring-up-the-backend)
+   - [5.2 Setup LLM Integrations page](#52-setup-llm-integrations-page)
+   - [5.3 Connect MCP — the LLM calls Splunk itself](#53-connect-mcp--the-llm-calls-splunk-itself)
+   - [5.4 RAG (optional)](#54-rag-optional)
+6. [**Red-team with MITRE ATLAS**](#6-red-team-with-mitre-atlas) — the lens over both targets
+   - [6.1 What ATLAS is & the two targets](#61-what-atlas-is--the-two-targets)
+   - [6.2 Attack the classifier — evade](#62-attack-the-classifier--evade)
+   - [6.3 Attack the classifier — poison](#63-attack-the-classifier--poison)
+   - [6.4 Attack the LLM + MCP assistant](#64-attack-the-llm--mcp-assistant)
+   - [6.5 Defenses & detections](#65-defenses--detections)
+   - [6.6 Real-world ATLAS case studies](#66-real-world-atlas-case-studies)
+
+---
+
+## The three AI pieces — how they fit
+
+This lab teaches three AI building blocks. They are **not** peers: two combine into
+one capability, and the third is a lens laid over it.
+
+| Piece | Stands alone? | Role |
+|---|---|---|
+| **Local LLM** (Ollama) | Yes — LLM Chat reasons over your search rows | the engine |
+| **MCP** | **No** — a layer *on top of* the LLM that hands it Splunk as a tool | makes the LLM agentic |
+| **MITRE ATLAS** | n/a — a framework, not a running service | the red-team lens |
+
+Two ideas the rest of the guide builds on:
+
+- **Local LLM + MCP combine into one capability.** The LLM alone reads what you
+  paste in; add MCP and it runs its *own* Splunk searches — the "agentic SOC
+  assistant" this guide treats as the hero. You **build** it in
+  [5](#5-llm-integrations-and-mcp).
+- **ATLAS is orthogonal — it attacks whatever you built.** It targets the DGA
+  *classifier* (evade, poison) **and** the *LLM + MCP* assistant (prompt injection,
+  plugin compromise, data leakage). You **break** both with it in
+  [6](#6-red-team-with-mitre-atlas).
+
+So the arc is **BUILD → BREAK**: stand up the classifier
+([3](#3-develop-models-in-jupyterlab)) and the LLM+MCP assistant
+([5](#5-llm-integrations-and-mcp)), then red-team both through the one ATLAS lens
+([6](#6-red-team-with-mitre-atlas)).
+
+| Capability you BUILD | How | How ATLAS BREAKS it |
+|---|---|---|
+| DGA classifier | `fit` / `apply MLTKContainer` | Evade `AML.T0015`, Poison `AML.T0020` |
+| Local LLM (Ollama) | LLM Chat over results | Prompt injection `AML.T0051`, Jailbreak `AML.T0054`, Data leakage `AML.T0057` |
+| **LLM + MCP** (hero) | LLM calls Splunk as a tool | **Plugin compromise `AML.T0053`** — only reachable once MCP is connected |
 
 ---
 ---
@@ -189,7 +225,7 @@ Apps → AI Toolkit → Permissions → "All apps").
 
 ➡️ **Next:** configure the DSDL Setup page — [2](#2-configure-the-dsdl-setup-page).
 Then open JupyterLab ([3.1](#31-open-jupyterlab)) and run the DGA POC
-([`dga/README.md`](../poc/dga/README.md)):
+([`poc/dga/README.md`](../poc/dga/README.md)):
 
 ```spl
 # train (after loading the dga_neural_network notebook + the lookup)
@@ -281,7 +317,7 @@ empty — it's for K8s/OpenShift clusters, not this lab.
 | **Docker Host** | `tcp://docker-proxy:2375` | How DSDL reaches a Docker daemon to create model containers. We use the `docker-proxy` sidecar instead of `unix://var/run/docker.sock` because the splunk process (uid 41812) can't read the root-owned socket → `Permission denied`. The proxy holds the socket and exposes a scoped TCP API the splunk container reaches by name. |
 | **Endpoint URL** | `host.docker.internal` | Hostname Splunk uses to call the model container's API (`:5000`). The container runs on the **host** Docker and publishes its ports there; from inside the splunk container `localhost` is itself, so you must use `host.docker.internal` to hop to the host. **Hostname only** — no `https://`, no port (DSDL adds them). |
 | **External URL** | `localhost` | Hostname put into the **JupyterLab / TensorBoard links** you click in the browser. Your browser is on the host, where the container's `:8888`/`:6006` are published → `localhost`. |
-| **Docker network** | *(empty)* | Only matters for the LLM-RAG integration ([6](#6-configure-llm-integrations-llm-chat--rag)). Leave **empty** and the LLM-RAG container reaches the `ollama` service via `host.docker.internal` (the approach this guide uses); set it to **`splunk-dsdl`** instead if you'd rather the container resolve `ollama` / `milvus` by name. Leave empty for the DGA POC. |
+| **Docker network** | *(empty)* | Only matters for the LLM-RAG integration ([5](#5-llm-integrations-and-mcp)). Leave **empty** and the LLM-RAG container reaches the `ollama` service via `host.docker.internal` (the approach this guide uses); set it to **`splunk-dsdl`** instead if you'd rather the container resolve `ollama` / `milvus` by name. Leave empty for the DGA POC. |
 | **API Workers** | *(empty = 1)* | FastAPI worker threads inside the model container. 1 is fine for a POC. |
 | **Splunk Docker Logging Endpoint / Token** | *(empty)* | Optional: ship the container's stdout/stderr to Splunk via HEC. Not needed; read logs with `docker logs <mltk-container-…>`. |
 
@@ -507,7 +543,7 @@ into the container:
   via the JupyterLab file browser; the cell tags are already correct. If the
   `.py` isn't generated, open the notebook and Save once to trigger the hook.
 
-Full train/score walkthrough: [`dga/README.md`](../poc/dga/README.md).
+Full train/score walkthrough: [`poc/dga/README.md`](../poc/dga/README.md).
 
 ## 3.5 Talking to Splunk from the notebook
 
@@ -770,54 +806,145 @@ Splunk — an opt-out privacy setting, **not** data ingestion).
 ---
 ---
 
-# 5. Red-team the model with MITRE ATLAS
+# 5. LLM Integrations and MCP
 
-So far the model is the *defender*. This part flips it around: the DGA detector
-becomes the **target**, and you attack it with the same structured playbook the
-rest of security uses — except the target is the ML model itself, not a host or
-a network.
+The second capability this lab builds — the first was the DGA classifier in
+[3](#3-develop-models-in-jupyterlab) — is a **local LLM** that reasons over your
+search results, plus **MCP**, the layer that turns it from a chat box into an
+**agent** that queries Splunk itself. DSDL's **LLM assistants** (**LLM Chat**,
+**Querying LLM**, **LLM with Function Calling**) drive it; we point them at a
+**local Ollama** backend — no API key, no per-token cost, nothing leaves your
+machine. The hands-on walkthrough with BOTSv1 examples is
+[`../poc/mcp/README.md`](../poc/mcp/README.md); this section is the config
+reference.
 
-You attack a model **you trained, on your own machine** — an authorized,
-self-contained, defensive exercise. Scripts and the command-by-command version
-live in [`../atlas/README.md`](../atlas/README.md); this section is the
-follow-along narrative.
+```
+Splunk DSDL assistants ──► LLM-RAG container ──► ollama (this repo) ──► llama3.2:3b
+                           (started from DSDL UI)    host.docker.internal:11434
+                                  │
+                                  └─► MCP ──► Splunk as a tool (5.3)
+```
 
-## 5.1 What ATLAS is & how it maps here
+> **How the parts relate:** plain **LLM Chat works on its own** (5.1–5.2) — it
+> reads the rows you paste in. **MCP is not a separate feature** (5.3): it's an
+> add-on that lets the *same* LLM fetch its own data by calling Splunk. RAG (5.4)
+> is the optional heavy path. You red-team this whole assistant — the LLM target —
+> in [6.4](#64-attack-the-llm--mcp-assistant).
+
+## 5.1 Bring up the backend
+
+- **Ollama** — provided by this repo as a compose service
+  ([`../docker/docker-compose.yml`](../docker/docker-compose.yml); host port
+  `11434`, persistent `ollama-data` volume). Start it and pull a model — or just
+  run [`../poc/mcp/setup_llm.sh`](../poc/mcp/setup_llm.sh):
+  ```bash
+  docker compose -f docker/docker-compose.yml up -d ollama
+  docker exec ollama ollama pull llama3.2:3b   # ~2 GB, CPU-friendly
+  ```
+- **LLM-RAG container** — DSDL's own image. Start it from **Configuration →
+  Container Management** ("Red Hat LLM RAG CPU"). For local models, raise
+  **`max_fit_time` to `7200`** if requests time out.
+
+## 5.2 Setup LLM Integrations page
+
+**Configuration → Setup LLM Integrations**, **LLM** block (the only block LLM
+Chat needs — the rest are for RAG):
+
+| Field | Value | Note |
+|---|---|---|
+| LLM Service | `Ollama` | |
+| Enable Ollama | `Yes` | |
+| Ollama URL | `http://host.docker.internal:11434` | ⚠️ **not** the default `http://ollama:11434` — the LLM-RAG container is a host-Docker sibling that may not share a network with `ollama`, but port 11434 is published on the host. (Use `ollama` only if Docker network = `splunk-dsdl`, [2.2](#22-container-environment-docker).) |
+| Model Name | `llama3.2:3b` | must match `docker exec ollama ollama list` |
+
+**Save** → on **LLM Chat** the *"Error loading LLM options"* control becomes a
+model dropdown. OpenAI / Azure / Bedrock / Gemini work the same way, with an API
+key instead of the Ollama URL.
+
+At this point you have the **standalone local LLM**: open **Assistants → LLM
+Chat**, run a search, and ask the model about the rows it returns. Worked examples
+on BOTSv1 are in [`../poc/mcp/README.md`](../poc/mcp/README.md).
+
+## 5.3 Connect MCP — the LLM calls Splunk itself
+
+This is the step that makes the assistant **agentic**. Plain LLM Chat only sees
+the rows *you* paste in; with **MCP** ([Model Context
+Protocol](https://modelcontextprotocol.io/)) connected, the LLM can call **Splunk
+as a tool** — run its own searches, look things up — which is what powers the
+**LLM with Function Calling** assistant. The **MCP DISCONNECTED** badge on LLM
+Chat is this connection.
+
+- MCP is **independent of the LLM backend** — `DISCONNECTED` does **not** block
+  plain chat (5.1–5.2 work without it); you just don't get tool use.
+- Connecting it needs a reachable **Splunk MCP server** endpoint configured in the
+  DSDL app. The exact field has moved between DSDL releases, so check your
+  version's *Setup* / *LLM with Function Calling* page.
+
+Treat MCP as the next step after plain chat works — and note that handing the LLM
+real tools is exactly what makes [6.4](#64-attack-the-llm--mcp-assistant)'s
+**plugin-compromise** attack possible, so keep any MCP tools **least-privilege /
+read-only**.
+
+## 5.4 RAG (optional)
+
+**RAG-based LLM** adds an **Embedding model** (default in-container HuggingFace
+`all-MiniLM-L6-v2`, or Ollama) and a **Vector DB** (Milvus, Pinecone, …) so the
+model retrieves relevant documents before answering. Milvus is its own container
+stack — out of scope for the basic POC. Start with LLM Chat / Standalone LLM; add
+RAG only when you specifically want retrieval. Full walkthrough, RAG setup, and
+troubleshooting: [`../poc/mcp/README.md`](../poc/mcp/README.md).
+
+---
+---
+
+# 6. Red-team with MITRE ATLAS
+
+You've now **built** two AI capabilities — the DGA **classifier**
+([3](#3-develop-models-in-jupyterlab)) and the **LLM + MCP** assistant
+([5](#5-llm-integrations-and-mcp)). This part **breaks** them. MITRE ATLAS is one
+**lens** laid over both: the same structured playbook the rest of security uses,
+except the target is the AI itself — the model, its training data, or the LLM that
+reads your logs.
+
+Everything here attacks a system **you built, on your own machine** — an
+authorized, self-contained, defensive exercise. Scripts and the
+command-by-command version live in [`../atlas/README.md`](../atlas/README.md);
+this section is the follow-along narrative.
+
+## 6.1 What ATLAS is & the two targets
 
 [**MITRE ATLAS**](https://atlas.mitre.org/) (*Adversarial Threat Landscape for
-Artificial-Intelligence Systems*) is ATT&CK's sibling for AI/ML systems: the
-same **tactic → technique** structure, but the techniques describe attacks on
-the model — evading it, poisoning its training data, stealing it, abusing its
-inference API. Where ATT&CK asks "how do they move through the network", ATLAS
-asks "how do they defeat the model".
+Artificial-Intelligence Systems*) is ATT&CK's sibling for AI/ML systems: the same
+**tactic → technique** structure, but the techniques describe attacks on the AI —
+evading a model, poisoning its training data, stealing it, or steering an LLM
+through its inputs. Where ATT&CK asks "how do they move through the network",
+ATLAS asks "how do they defeat the AI".
 
-This lab gives you a complete, attackable AI system, so several ATLAS cells map
-onto it directly:
+This lab gives ATLAS **two targets**, and the rest of the section is split along
+them:
 
-| ATLAS tactic | Technique (ID) | Where it lives in this lab |
-|---|---|---|
-| ML Model Access | ML Model Inference API Access (`AML.T0040`) | DSDL serves the model at `:5000`; every `apply MLTKContainer` is a query to that inference API. |
-| ML Attack Staging | Craft Adversarial Data (`AML.T0043`) | [5.2](#52-attack-a--evade-the-model) — DGA domains shaped to read as benign. |
-| Defense Evasion | Evade ML Model (`AML.T0015`) | those crafted domains coming back `is_dga_predicted=0` — C2 traffic the detector misses. |
-| Persistence / ML Attack Staging | Poison Training Data (`AML.T0020`) | [5.3](#53-attack-b--poison-the-training-data) — mislabel DGA as benign in the lookup. |
-| Persistence | Backdoor ML Model (`AML.T0018`) | retraining on the poisoned lookup bakes the blind spot in. |
-| Impact | Erode ML Model Integrity (`AML.T0031`) | the poisoned model's recall on that DGA family collapses. |
+| Target | What it is | ATLAS techniques | Where |
+|---|---|---|---|
+| **A — the classifier** | the DGA detector you trained ([3](#3-develop-models-in-jupyterlab)) | Inference API Access `AML.T0040`; Craft Adversarial Data `AML.T0043` → Evade `AML.T0015`; Poison Training Data `AML.T0020` → Backdoor `AML.T0018` / Erode `AML.T0031` | [6.2](#62-attack-the-classifier--evade), [6.3](#63-attack-the-classifier--poison) |
+| **B — the LLM + MCP assistant** | the agent you built ([5](#5-llm-integrations-and-mcp)) | Prompt Injection `AML.T0051`, Jailbreak `AML.T0054`, **Plugin Compromise `AML.T0053`**, Data Leakage `AML.T0057` | [6.4](#64-attack-the-llm--mcp-assistant) |
 
 > Technique IDs follow the live matrix at
 > <https://atlas.mitre.org/matrices/ATLAS> — check there if the numbering has
-> moved. The point isn't to memorize IDs; it's to recognize that "the model"
-> and "its training data" are attack surfaces with named, repeatable techniques.
+> moved. The point isn't to memorize IDs; it's to recognize that the model, its
+> training data, **and** the LLM that reads your logs are each an attack surface
+> with named, repeatable techniques.
 
-Both attacks load a CSV as a lookup using the same `docker cp` pattern as the
-DGA walkthrough ([`../dga/README.md` 2](../poc/dga/README.md)), then run a normal
-`fit`/`apply`. Nothing new to install.
+Target-A attacks (6.2–6.3) load a CSV as a lookup using the same `docker cp`
+pattern as the DGA walkthrough ([`../poc/dga/README.md`](../poc/dga/README.md)),
+then run a normal `fit`/`apply` — nothing new to install. Target B (6.4) uses the
+LLM Chat / MCP path you configured in [5](#5-llm-integrations-and-mcp).
 
-## 5.2 Attack A — evade the model
+## 6.2 Attack the classifier — evade
 
-**`AML.T0043` Craft Adversarial Data → `AML.T0015` Evade ML Model.**
+**Target A. `AML.T0043` Craft Adversarial Data → `AML.T0015` Evade ML Model.**
 
 The detector learned one thing well: *random letter-soup is bad, pronounceable
-brand names are fine* (look at [`../dga/make_training_data.py`](../poc/dga/make_training_data.py) —
+brand names are fine* (look at [`../poc/dga/make_training_data.py`](../poc/dga/make_training_data.py) —
 that's exactly the contrast it was trained on). So the cheapest evasion is a
 malicious domain that **sounds real**: pronounceable syllables, mashed
 dictionary words, or a typo-squat of a known brand.
@@ -860,9 +987,9 @@ attacker would actually register:
 `AML.T0015` in action — the model's narrow training contrast is the whole
 weakness, and adversarial inputs exploit it without touching the model at all.
 
-## 5.3 Attack B — poison the training data
+## 6.3 Attack the classifier — poison
 
-**`AML.T0020` Poison Training Data → `AML.T0018` Backdoor ML Model /
+**Target A. `AML.T0020` Poison Training Data → `AML.T0018` Backdoor ML Model /
 `AML.T0031` Erode ML Model Integrity.**
 
 Evasion dodges the model as-is. Poisoning is nastier: corrupt the *training
@@ -906,56 +1033,12 @@ detection silently eroded by tampering with data, not code. Try `--rate 0.05`
 to see how little poison it takes, or `--family hex` / `--family consonant` to
 backdoor a different DGA family.
 
-## 5.4 Defenses & detections
+## 6.4 Attack the LLM + MCP assistant
 
-Each attack has a matching ATLAS mitigation — and a concrete move in this lab:
-
-| Attack | ATLAS mitigation | What to do here |
-|---|---|---|
-| Evasion (`AML.T0015`) | Adversarial Input Detection, Model Robustness (`AML.M0015`, `AML.M0003`) | Feed the crafted domains back into training (correctly labeled), and add non-character features — string **entropy**, n-gram rarity, length, TLD reputation — so the model isn't fooled by "looks pronounceable". Don't trust a single 0.5 threshold. |
-| Poisoning (`AML.T0020`) | Sanitize / Validate Training Data (`AML.M0007`, `AML.M0014`) | Treat the lookup as a governed artifact: review the label distribution before every `fit`, track who changed it (provenance), and alert on training-set drift. |
-| API abuse (`AML.T0040`/`AML.T0024`) | Limit Model Queries (`AML.M0004`) | Authenticate and rate-limit the `:5000` endpoint; don't hand raw confidence scores to untrusted callers — repeated queries leak the decision boundary. |
-
-The honest framing: this is a *teaching* model on a few hundred rows, so it is
-deliberately easy to fool — don't read the evasion/poison rates as a verdict on
-real DGA detectors. The transferable lesson is the **workflow**: treat the model
-and its training data as attack surface, probe them with named ATLAS techniques,
-and feed what you learn back into both the model **and** your Splunk detections
-(the [optional scheduled detection in `../dga/README.md`](../poc/dga/README.md#optional--schedule-it-as-a-detection)
-is where the defensive loop closes).
-
-## 5.5 Real-world ATLAS case studies
-
-The two attacks above aren't hypothetical — ATLAS documents the **real
-incidents** they're modeled on, each mapped to the same techniques. The most
-relevant is **`AML.CS0001` Botnet DGA Detection Evasion**: Palo Alto Networks'
-team took a public **CNN-based DGA detector** (the same kind as this lab's
-`dga_neural_network`), and by inserting a single string into each DGA domain,
-dropped detection across 16 botnet families from **>70% to under 25%**. That is
-[5.2](#52-attack-a--evade-the-model) at production scale.
-
-Other case studies that ground this section:
-
-| ATLAS case study | What happened | This lab's mirror |
-|---|---|---|
-| [`AML.CS0001`](https://atlas.mitre.org/studies) Botnet DGA Detection Evasion | one-string mutation collapsed a CNN DGA detector (70%→<25%) | [5.2 evade the model](#52-attack-a--evade-the-model) |
-| [`AML.CS0000`](https://atlas.mitre.org/studies) Evasion of DL detector for malware C&C traffic | stripped HTTP headers to slip C&C traffic past a DL model | 5.2 (same idea, one layer up) |
-| [`AML.CS0002`](https://atlas.mitre.org/studies) VirusTotal Poisoning | mutated ransomware samples skewed a malware-classification pipeline | [5.3 poison the data](#53-attack-b--poison-the-training-data) |
-| [`AML.CS0009`](https://atlas.mitre.org/studies) Tay Poisoning | a feedback loop poisoned Microsoft's chatbot in <24h | 5.3 (online version) |
-| [`AML.CS0008`](https://atlas.mitre.org/studies) ProofPoint Evasion | a shadow model enabled transferable email evasions | [5.4 API abuse](#54-defenses--detections) |
-
-> Full write-ups, technique mappings, and how each maps to your exercises:
-> [`../atlas/CASE-STUDIES.md`](../atlas/CASE-STUDIES.md). Live catalog (source of
-> truth): <https://atlas.mitre.org/studies>. After each attack, name the case
-> study you just re-created and look up the real-world impact — that's the bridge
-> from teaching model to production risk.
-
-## 5.6 Red-team the LLM assistant (prompt injection)
-
-Sections 5.2–5.3 attacked the *DGA classifier*. The **LLM Integrations** feature
-([6](#6-configure-llm-integrations-llm-chat--rag)) adds a second, very different
-attack surface to the same lab — and ATLAS has techniques aimed right at it. The
-key fact: **LLM Chat feeds your search results into the model**, so any text an
+**Target B.** Sections 6.2–6.3 attacked the *classifier*. This is the **LLM + MCP
+assistant** you built in [5](#5-llm-integrations-and-mcp) — a second, very
+different attack surface, and ATLAS has techniques aimed right at it. The key
+fact: **LLM Chat feeds your search results into the model**, so any text an
 attacker can land in your logs becomes model input.
 
 | ATLAS technique (ID) | In this lab's LLM Chat / MCP |
@@ -963,8 +1046,14 @@ attacker can land in your logs becomes model input.
 | LLM Prompt Injection — **Direct** (`AML.T0051.000`) | you type a prompt that overrides the assistant's instructions / guardrails. |
 | LLM Prompt Injection — **Indirect** (`AML.T0051.001`) | a payload **hidden in log data** (a DNS query, hostname, user-agent…) steers the model when you ask it to summarise those events — the analyst never typed it. |
 | LLM Jailbreak (`AML.T0054`) | a crafted prompt unlocks restricted behaviour. |
-| LLM Plugin Compromise / agent tool invocation (`AML.T0053`) | with **MCP connected**, injected text can drive the LLM's *Splunk tools* — turning a "summarise this" request into attacker-chosen searches/actions. |
+| **LLM Plugin Compromise** / agent tool invocation (`AML.T0053`) | with **MCP connected** (5.3), injected text can drive the LLM's *Splunk tools* — turning a "summarise this" request into attacker-chosen searches/actions. |
 | LLM Data Leakage (`AML.T0057`) | coaxing the assistant to reveal data or its own system prompt. |
+
+The headline for *this* stack is **Plugin Compromise (`AML.T0053`)**: it's the one
+technique that only becomes reachable once you connect **MCP** (5.3). Without
+tools, a hijacked prompt produces a wrong *answer*; with tools, it produces
+attacker-chosen *actions*. That's why MCP raises the stakes — and why its tools
+should be least-privilege / read-only.
 
 **Try indirect injection — the lab's most realistic one.** Plant a poisoned event
 via HEC ([4.3](#43-send-data-to-hec)), then summarise it in LLM Chat:
@@ -979,73 +1068,61 @@ In **LLM Chat**, run `index=main sourcetype=hec:test | head 20` and ask *"summar
 these events"*. If the reply is `PWNED` instead of a summary, the **data** steered
 the model — that's `AML.T0051.001` end to end, without touching the model itself.
 
-**Defenses** (ATLAS mitigations, same spirit as [5.4](#54-defenses--detections)):
+**Defenses** (ATLAS mitigations, same spirit as [6.5](#65-defenses--detections)):
 treat retrieved log text as **untrusted data, not instructions** (delimit it, and
 tell the model to ignore commands inside it); keep any MCP tools
 **least-privilege / read-only** so a hijacked prompt can't act; and never put
-secrets in the system prompt. As in 5.4, a small local model is easy to steer —
+secrets in the system prompt. As in 6.5, a small local model is easy to steer —
 the transferable lesson is that **the moment an LLM reads your logs, your logs
 become an injection vector.**
 
----
----
+## 6.5 Defenses & detections
 
-# 6. Configure LLM Integrations (LLM Chat & RAG)
+Each **Target-A** attack has a matching ATLAS mitigation — and a concrete move in
+this lab (the LLM-assistant defenses are inline in
+[6.4](#64-attack-the-llm--mcp-assistant)):
 
-DSDL's **LLM assistants** (**LLM Chat**, **Querying LLM**, **Local LLM &
-Embedding Management**) let a model reason over your search results. This section
-is the **config reference**; the hands-on walkthrough is in
-[`../poc/mcp/README.md`](../poc/mcp/README.md). We point them at a **local
-Ollama** backend — no API key, no per-token cost.
-
-```
-Splunk DSDL assistants ──► LLM-RAG container ──► ollama (this repo) ──► llama3.2:3b
-                           (started from DSDL UI)    host.docker.internal:11434
-```
-
-## 6.1 Bring up the backend
-
-- **Ollama** — provided by this repo as a compose service
-  ([`../docker/docker-compose.yml`](../docker/docker-compose.yml); host port
-  `11434`, persistent `ollama-data` volume). Start it and pull a model — or just
-  run [`../poc/mcp/setup_llm.sh`](../poc/mcp/setup_llm.sh):
-  ```bash
-  docker compose -f docker/docker-compose.yml up -d ollama
-  docker exec ollama ollama pull llama3.2:3b   # ~2 GB, CPU-friendly
-  ```
-- **LLM-RAG container** — DSDL's own image. Start it from **Configuration →
-  Container Management** ("Red Hat LLM RAG CPU"). For local models, raise
-  **`max_fit_time` to `7200`** if requests time out.
-
-## 6.2 Setup LLM Integrations page
-
-**Configuration → Setup LLM Integrations**, **LLM** block (the only block LLM
-Chat needs — the rest are for RAG):
-
-| Field | Value | Note |
+| Attack | ATLAS mitigation | What to do here |
 |---|---|---|
-| LLM Service | `Ollama` | |
-| Enable Ollama | `Yes` | |
-| Ollama URL | `http://host.docker.internal:11434` | ⚠️ **not** the default `http://ollama:11434` — the LLM-RAG container is a host-Docker sibling that may not share a network with `ollama`, but port 11434 is published on the host. (Use `ollama` only if Docker network = `splunk-dsdl`, [2.2](#22-container-environment-docker).) |
-| Model Name | `llama3.2:3b` | must match `docker exec ollama ollama list` |
+| Evasion (`AML.T0015`) | Adversarial Input Detection, Model Robustness (`AML.M0015`, `AML.M0003`) | Feed the crafted domains back into training (correctly labeled), and add non-character features — string **entropy**, n-gram rarity, length, TLD reputation — so the model isn't fooled by "looks pronounceable". Don't trust a single 0.5 threshold. |
+| Poisoning (`AML.T0020`) | Sanitize / Validate Training Data (`AML.M0007`, `AML.M0014`) | Treat the lookup as a governed artifact: review the label distribution before every `fit`, track who changed it (provenance), and alert on training-set drift. |
+| API abuse (`AML.T0040`/`AML.T0024`) | Limit Model Queries (`AML.M0004`) | Authenticate and rate-limit the `:5000` endpoint; don't hand raw confidence scores to untrusted callers — repeated queries leak the decision boundary. |
 
-**Save** → on **LLM Chat** the *"Error loading LLM options"* control becomes a
-model dropdown. OpenAI / Azure / Bedrock / Gemini work the same way, with an API
-key instead of the Ollama URL.
+The honest framing: this is a *teaching* model on a few hundred rows, so it is
+deliberately easy to fool — don't read the evasion/poison rates as a verdict on
+real DGA detectors. The transferable lesson is the **workflow**: treat the model
+and its training data as attack surface, probe them with named ATLAS techniques,
+and feed what you learn back into both the model **and** your Splunk detections
+(the [optional scheduled detection in `../poc/dga/README.md`](../poc/dga/README.md#optional--schedule-it-as-a-detection)
+is where the defensive loop closes).
 
-## 6.3 RAG & MCP (optional)
+## 6.6 Real-world ATLAS case studies
 
-- **RAG** (*RAG-based LLM*) adds an **Embedding model** (default in-container
-  HuggingFace `all-MiniLM-L6-v2`, or Ollama) and a **Vector DB** (Milvus,
-  Pinecone, …). Milvus is its own container stack — out of scope for the basic POC.
-- **MCP** — the **MCP DISCONNECTED** badge is the Splunk
-  [MCP](https://modelcontextprotocol.io/) link that lets the LLM call Splunk as a
-  **tool** (the *LLM with Function Calling* assistant). It's independent of the
-  LLM backend — plain chat works without it; connecting it needs a Splunk MCP
-  server endpoint (the field varies by DSDL release).
+The two classifier attacks above aren't hypothetical — ATLAS documents the **real
+incidents** they're modeled on, each mapped to the same techniques. The most
+relevant is **`AML.CS0001` Botnet DGA Detection Evasion**: Palo Alto Networks'
+team took a public **CNN-based DGA detector** (the same kind as this lab's
+`dga_neural_network`), and by inserting a single string into each DGA domain,
+dropped detection across 16 botnet families from **>70% to under 25%**. That is
+[6.2](#62-attack-the-classifier--evade) at production scale.
 
-Full walkthrough, RAG setup, and troubleshooting:
-[`../poc/mcp/README.md`](../poc/mcp/README.md).
+Other case studies that ground this section:
+
+| ATLAS case study | What happened | This lab's mirror |
+|---|---|---|
+| [`AML.CS0001`](https://atlas.mitre.org/studies) Botnet DGA Detection Evasion | one-string mutation collapsed a CNN DGA detector (70%→<25%) | [6.2 evade](#62-attack-the-classifier--evade) |
+| [`AML.CS0000`](https://atlas.mitre.org/studies) Evasion of DL detector for malware C&C traffic | stripped HTTP headers to slip C&C traffic past a DL model | 6.2 (same idea, one layer up) |
+| [`AML.CS0002`](https://atlas.mitre.org/studies) VirusTotal Poisoning | mutated ransomware samples skewed a malware-classification pipeline | [6.3 poison](#63-attack-the-classifier--poison) |
+| [`AML.CS0009`](https://atlas.mitre.org/studies) Tay Poisoning | a feedback loop poisoned Microsoft's chatbot in <24h | 6.3 (online version) |
+| [`AML.CS0008`](https://atlas.mitre.org/studies) ProofPoint Evasion | a shadow model enabled transferable email evasions | [6.5 API abuse](#65-defenses--detections) |
+
+> Full write-ups, technique mappings, and how each maps to your exercises:
+> [`../atlas/CASE-STUDIES.md`](../atlas/CASE-STUDIES.md). Live catalog (source of
+> truth): <https://atlas.mitre.org/studies>. After each attack, name the case
+> study you just re-created and look up the real-world impact — that's the bridge
+> from teaching model to production risk. The LLM-side case studies (ProofPoint
+> shadow-model, Tay) tie into [6.4](#64-attack-the-llm--mcp-assistant) too.
+
 
 ---
 
