@@ -831,6 +831,20 @@ Splunk DSDL assistants ──► LLM-RAG container ──► ollama (this repo) 
 > is the optional heavy path. You red-team this whole assistant — the LLM target —
 > in [6.4](#64-attack-the-llm--mcp-assistant).
 
+**Two ways to drive the LLM** — same Ollama backend, very different ergonomics:
+
+| Path | What it is | You control | Start at |
+|---|---|---|---|
+| **A — GUI assistants** | Splunk's **LLM Chat** / **LLM with Function Calling** | run a search, pick a model, ask — DSDL owns the system prompt and how rows become context | 5.1–5.3, then [`../poc/mcp/README.md`](../poc/mcp/README.md) examples |
+| **B — custom in JupyterLab** | your own Python in the DSDL golden container ([3](#3-develop-models-in-jupyterlab)) | *everything* — system prompt, context shaping, temperature, JSON output, multi-turn, your own RAG, even the provider | [`../poc/mcp/README.md` "Write it yourself"](../poc/mcp/README.md#write-it-yourself-in-jupyterlab-full-control) |
+
+Path A is the fast start. **MCP (5.3) belongs to Path A** — it's how the *GUI*
+assistant gets tool use. Path B is the escape hatch when the assistant's fixed
+behaviour gets in the way: there you *are* the glue, calling Ollama and Splunk
+from code via the [3](#3-develop-models-in-jupyterlab) dev loop. Path B needs only
+**Ollama up** (5.1) — it talks to it directly from the notebook, **skipping the
+Setup page (5.2) and MCP (5.3)**, which exist for the GUI assistants.
+
 ## 5.1 Bring up the backend
 
 - **Ollama** — provided by this repo as a compose service

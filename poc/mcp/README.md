@@ -28,6 +28,15 @@ to lives in [`../../docs/GUIDE.md` 5](../../docs/GUIDE.md#5-llm-integrations-and
 > ATLAS then red-teams it in
 > [`../../docs/GUIDE.md` 6.4](../../docs/GUIDE.md#64-attack-the-llm--mcp-assistant).
 
+> **Two ways to drive it from here — pick by how much control you want:**
+> **(A) GUI** — Steps 1–5 below, then [Try it on BOTSv1](#try-it-on-botsv1)
+> (LLM Chat; DSDL owns the system prompt and how rows become context); or
+> **(B) custom** —
+> [Write it yourself in JupyterLab](#write-it-yourself-in-jupyterlab-full-control),
+> where you own the prompt, context, and request options in Python and talk to
+> Ollama directly. Same backend; Path B needs only Ollama running (Step 1), not
+> the LLM-RAG container or the Setup page.
+
 ---
 
 ## Prereqs
