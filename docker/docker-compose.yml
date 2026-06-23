@@ -95,12 +95,23 @@ services:
   # so it's always available and predictable (instead of relying on DSDL's
   # Containers page to spawn one). It runs in DEV mode (MODE_DEV_PROD=DEV),
   # which is what makes the golden image start JupyterLab — a plain run only
-  # starts the API. It serves, all over HTTPS (self-signed dev cert):
+  # starts the API. Inside the container it serves over HTTPS (self-signed cert):
   #   :5000  model API   -> DSDL fit/apply target (Endpoint URL host.docker.internal)
   #   :8888  JupyterLab  -> open https://localhost:8888  (HTTPS! not http)
   #   :6006  TensorBoard
-  # Because compose runs this, do NOT also "Start" a container from the DSDL
-  # Containers page — it would collide on ports 5000/8888.
+  # HEADS-UP — golden and the DSDL LLM-RAG container share the DSDL "dev slot"
+  # (host :5000/:8888/:6006) and are MUTUALLY EXCLUSIVE there. To run LLM Chat
+  # you start the LLM-RAG image from DSDL -> Container Management (pick "Agentic
+  # AI" :agentic-ai-5.2.4 — the "Red Hat LLM RAG CPU" :5.2.4 tag crashes on boot,
+  # missing langgraph). It also wants those host ports. Two ways to avoid the clash:
+  #   (a) stop golden first:  docker stop mltk-dev   (frees the ports; simplest)
+  #   (b) keep golden running but move its HOST ports via docker/.env:
+  #         MLTK_DEV_API_PORT=5001  MLTK_DEV_JUPYTER_PORT=8889  MLTK_DEV_TB_PORT=6007
+  #       golden's JupyterLab then lives at https://localhost:8889 and the LLM-RAG
+  #       container takes host :5000. Caveat: in (b) DSDL's :5000 endpoint now
+  #       points at LLM-RAG, so MLTKContainer fit/apply (e.g. the DGA POC) won't
+  #       reach golden until golden is back on host :5000.
+  # See docs/GUIDE.md 5.1 and poc/mcp/README.md Step 2 for the full walkthrough.
   mltk-dev:
     image: ${GOLDEN_IMAGE:-splunk/mltk-container-golden-cpu:5.2.3}
     platform: linux/amd64
@@ -111,9 +122,13 @@ services:
       # Override by setting JUPYTER_PASSWD to another hash in docker/.env.
       - JUPYTER_PASSWD=${JUPYTER_PASSWD:-sha1:6a98ab1ca809:71198af5aadebf82c8416ed926141b46392716ea}
     ports:
-      - "5000:5000"      # model API (HTTPS)
-      - "8888:8888"      # JupyterLab (HTTPS)
-      - "6006:6006"      # TensorBoard
+      # Defaults match the DSDL dev slot (5000/8888/6006). Override these in
+      # docker/.env to free the host ports for the LLM-RAG container while keeping
+      # golden running — see the HEADS-UP note above. Only the HOST side moves;
+      # golden still listens on 5000/8888/6006 inside the container.
+      - "${MLTK_DEV_API_PORT:-5000}:5000"        # model API (HTTPS)
+      - "${MLTK_DEV_JUPYTER_PORT:-8888}:8888"    # JupyterLab (HTTPS)
+      - "${MLTK_DEV_TB_PORT:-6006}:6006"         # TensorBoard
     volumes:
       - mltk-container-data:/srv
     restart: unless-stopped
@@ -145,10 +160,13 @@ services:
       - ollama-data:/root/.ollama   # cached model weights survive restarts
     restart: unless-stopped
 
-# Predictable network name so the splunk container can resolve the
-# docker-proxy by name, and so a DSDL-spawned container can optionally join
-# it. In the DSDL Setup page, set the container network to "splunk-dsdl"
-# only if you later need container<->container name resolution.
+# Predictable network name so the splunk container can resolve the docker-proxy
+# by name, and so a DSDL-spawned container can join it. In the DSDL Setup page,
+# set "Docker network" to "splunk-dsdl" — REQUIRED for the LLM-RAG assistants:
+# DSDL reaches the LLM-RAG container it spawns by name on this shared network, so
+# without it the container lands on the default bridge net and the assistants fail
+# with "Could not create search" / "BACKEND UNREACHABLE". (The DGA POC, which uses
+# the compose-run golden via host.docker.internal:5000, doesn't need it.)
 networks:
   default:
     name: splunk-dsdl

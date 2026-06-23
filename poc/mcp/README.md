@@ -72,9 +72,68 @@ curl -s http://localhost:11434/api/generate \
 
 ## Step 2 — Start the LLM-RAG container
 
-In the DSDL app: **Configuration → Container Management** → start the
-**"Red Hat LLM RAG CPU"** image. This is the container that hosts the LLM / RAG /
-MCP endpoints the assistants call.
+In the DSDL app: **Configuration → Container Management** → start the **"Agentic
+AI"** image (`splunk/mltk-container-ubi-llm-rag:agentic-ai-5.2.4`). This is the
+container that hosts the LLM / RAG / MCP endpoints the assistants call, and it
+ships the MCP/function-calling stack too.
+
+> ⚠️ **Use "Agentic AI", not "Red Hat LLM RAG CPU".** In this release the plain
+> RAG tag (`:5.2.4`) is mis-packaged — its `/srv/app/main.py` does
+> `from langgraph.types import Command` but the image never installs `langgraph`,
+> so the API process crashes on boot (`ModuleNotFoundError: No module named
+> 'langgraph'`). The symptom in the dashboard is **Active flips straight back to
+> Inactive** after Start. The `:agentic-ai-5.2.4` tag has `langgraph` installed
+> and boots cleanly (`Uvicorn running on https://0.0.0.0:5000`).
+
+> **Free the dev slot first.** This repo's compose already runs the **golden**
+> `mltk-dev` container on host **5000/8888/6006**, and the LLM-RAG container wants
+> those *same* host ports — so they can't both run as-is. You'll see
+> `Bind for 0.0.0.0:5000 failed: port is already allocated` if golden is still
+> there. Two fixes:
+> - **Simplest** — stop golden, then Start LLM-RAG: `docker stop mltk-dev`
+> - **Keep both** — move golden's host ports (set `MLTK_DEV_API_PORT=5001`,
+>   `MLTK_DEV_JUPYTER_PORT=8889`, `MLTK_DEV_TB_PORT=6007` in
+>   [`../../docker/.env`](../../docker/.env), then
+>   `docker compose -f docker/docker-compose.yml up -d mltk-dev`). golden's
+>   JupyterLab moves to <https://localhost:8889>; LLM-RAG takes host :5000.
+>   ([`../../docs/GUIDE.md` 5.1](../../docs/GUIDE.md#51-bring-up-the-backend) has
+>   the trade-off — fit/apply on :5000 then targets LLM-RAG, not golden.)
+
+> **If Start hangs on "LOADING" and nothing comes up**, DSDL's auto-pull of the
+> multi-GB image likely failed silently through the docker proxy. Pull it yourself
+> on the host, then Start again (the image is now cached locally):
+> ```bash
+> docker pull splunk/mltk-container-ubi-llm-rag:agentic-ai-5.2.4
+> ```
+
+> ⚠️ **Then run the image fixer — once, while the container runs.** The
+> `agentic-ai-5.2.4` image's `app/model/llm_utils.py` (imported by every LLM
+> **algo**) has two issues that break the *Querying LLM* assistants:
+> 1. **Missing dependency** — it hard-imports `llama_index.llms.bedrock`, never
+>    installed, so the algo won't load and the run dies with *"Error in 'fit'
+>    command: MLTKC parameters: {...}"*.
+> 2. **Context-window OOM** — it creates the Ollama client without capping context,
+>    so `llama_index` asks for the model's full 128K KV cache (~14 GB); on a
+>    low-RAM host llama-server is OOM-killed and the LLM cell shows *"ERROR at LLM
+>    generation: llama-server process has terminated: signal: killed (status code:
+>    500)"*.
+>
+> The fixer guards the import and caps `context_window` (default **8192**). Both
+> edits land in the persistent `mltk-container-data` volume (stick across restarts);
+> the algo reloads per `fit`, so no container restart is needed:
+> ```bash
+> ./poc/mcp/fix_llm_rag_image.sh                 # cap context to 8192 (recommended)
+> CTX_CAP=32768 ./poc/mcp/fix_llm_rag_image.sh   # bigger window for large log inputs
+> CTX_CAP=0     ./poc/mcp/fix_llm_rag_image.sh   # full 128K — needs lots of RAM (see below)
+> ```
+> **Don't chase the full 128K context.** Its KV cache is ~14 GB; with Splunk
+> (~5 GB) and the other containers that overruns even a 24 GB host. A cap is not a
+> compromise here — log-triage prompts are a few thousand tokens, and `32768`
+> (~3.5 GB) already holds a *lot* of log text. More Docker RAM helps the containers
+> coexist but won't make the full window practical.
+>
+> **LLM Chat** is unaffected (it uses the container's chatbot path, not the algo);
+> these only bite the **algo-based** assistants under *Querying LLM*.
 
 > Local models are slower than cloud APIs — if requests time out, raise
 > **`max_fit_time` to `7200`** (the *Querying LLM* assistant's Prerequisites links
@@ -91,24 +150,33 @@ MCP endpoints the assistants call.
 | Ollama URL | `http://host.docker.internal:11434`  ⚠️ *not* `http://ollama:11434` |
 | Model Name | `llama3.2:3b` |
 
-**Save.** Why `host.docker.internal` and not `ollama`: the LLM-RAG container is a
-host-Docker sibling that may not share a network with the `ollama` service, so the
-name won't resolve — but port 11434 is published on the host, so
-`host.docker.internal` always reaches it. Full reasoning + the alternative
-(Docker network = `splunk-dsdl`) in
-[`../../docs/GUIDE.md` 5.2](../../docs/GUIDE.md#52-setup-llm-integrations-page).
+**Save.** `host.docker.internal` (not `ollama`) is the safe default — port 11434 is
+published on the host, so it resolves no matter which network the container is on.
+
+> ⚠️ **Also required: Docker network = `splunk-dsdl`.** On the **Configuration →
+> Setup** page (the container-connection page, *not* "Setup LLM Integrations") set
+> **Docker network** to `splunk-dsdl`, **Save**, then **restart the LLM-RAG
+> container** so it respawns on that network. DSDL's LLM integration addresses the
+> spawned container *by name on a shared network* — leave this empty and the
+> container lands on `bridge`, Splunk can't reach it, and every LLM assistant fails
+> with *"Could not create search" / "BACKEND UNREACHABLE" / "No LLM options
+> available"*. (`splunk-dsdl` is this repo's compose network; the help text's
+> `dsenv-network` is just DSDL's generic default name.) See
+> [`../../docs/GUIDE.md` 2.2](../../docs/GUIDE.md#22-container-environment-docker).
 
 ## Step 4 — Chat over your data (LLM Chat)
 
-**Assistants → LLM Chat**:
+**Assistants → Interactive Log Analysis → LLM Chat** (note: LLM Chat lives under
+**Interactive Log Analysis**, not the LLM-RAG menu):
 
 1. Left panel — run a search, e.g.
    ```spl
    index=botsv1 sourcetype=stream:dns message_type=Query | head 50
    ```
-2. Pick `llama3.2:3b` in the model dropdown (bottom-right). If it still says
-   *"Error loading LLM options"*, the LLM-RAG container isn't running or Setup
-   wasn't saved — see Troubleshooting.
+2. Pick `llama3.2:3b` in the model dropdown (bottom-right). If it says
+   *"Error loading LLM options" / "No LLM options available"* or the badge shows
+   *"BACKEND UNREACHABLE"*, the LLM-RAG container isn't running, Setup wasn't
+   saved, or **Docker network ≠ `splunk-dsdl`** (Step 3) — see Troubleshooting.
 3. Ask in the chat box, e.g.
    *"Summarise these DNS queries and flag anything that looks algorithmically
    generated (DGA)."*
@@ -117,9 +185,24 @@ The model answers over the rows your search returned. Ties in nicely with the
 [DGA detection POC](../dga/README.md) — same data, but here a human asks the LLM
 to triage instead of a trained classifier scoring it.
 
-> **Simplest sanity check:** **Assistants → Querying LLM → Standalone LLM** just
-> queries the model with no search context — use it to confirm the LLM path works
-> before anything else.
+> **Simplest sanity check:** **Assistants → LLM-RAG → Querying LLM → Standalone
+> LLM** just queries the model with no search context — use it to confirm the LLM
+> path works before anything else.
+
+### The assistants, and which menu they're under
+
+DSDL splits the LLM features across two menus. Quick map of what each does:
+
+| Assistant | Menu path | What it does | Needs |
+|---|---|---|---|
+| **LLM Chat** | Interactive Log Analysis → LLM Chat | Multi-turn chat over the rows your SPL returns | LLM-RAG container + Ollama |
+| **Standalone LLM** | LLM-RAG → Querying LLM → *Standalone LLM* | One-shot prompt to the LLM; optionally feed Splunk data by naming a field `text`. No retrieval | LLM-RAG container + Ollama |
+| **RAG-based LLM** | LLM-RAG → Querying LLM → *RAG-based LLM* | Retrieval-augmented: embeds your query, pulls matching docs from a Vector DB, then answers | + Embedding model + Vector DB (Milvus) |
+| **LLM with Function Calling** | LLM-RAG → Querying LLM → *LLM with Function Calling* | Agentic: the LLM calls **Splunk as a tool** (runs its own searches) via MCP | + MCP connected (Step 5) |
+| **Local LLM and Embedding Management** | LLM-RAG → Querying LLM → *Local LLM and Embedding Management* | Manage local **Ollama** LLM + embedding models (list / pull / remove) without the CLI | LLM-RAG container + Ollama |
+
+Start with **Standalone LLM** (sanity check) → **LLM Chat** (the main event).
+RAG-based and Function Calling are the heavier add-ons below.
 
 ## Try it on BOTSv1
 
@@ -330,6 +413,14 @@ add RAG only when you specifically want retrieval. Details:
 | Symptom | Fix |
 |---|---|
 | "Error loading LLM options" | Start the LLM-RAG container (Step 2), save the LLM block (Step 3), reload. |
+| Container Management stuck on **LOADING**, no container appears | DSDL's auto-pull of the big LLM-RAG image failed silently. Pull it on the host: `docker pull splunk/mltk-container-ubi-llm-rag:agentic-ai-5.2.4`, then Start again. |
+| `Bind for 0.0.0.0:5000 failed: port is already allocated` | golden `mltk-dev` holds the dev-slot ports. Stop it (`docker stop mltk-dev`) or remap its host ports — see Step 2. |
+| **Active flips back to Inactive** seconds after Start | You started "Red Hat LLM RAG CPU" (`:5.2.4`) — it crashes on boot (missing `langgraph`). Start **"Agentic AI"** (`:agentic-ai-5.2.4`) instead. Confirm: `docker run --rm -e MODE_DEV_PROD=DEV <image>` and read the logs. |
+| *"Could not create search" / "No LLM options available" / "BACKEND UNREACHABLE"* in an LLM assistant | The spawned LLM-RAG container isn't on Splunk's network. Set **Docker network = `splunk-dsdl`** on Configuration → Setup (Step 3), Save, **restart the LLM-RAG container**, then hard-reload the assistant page. Verify with `docker inspect <container> --format '{{json .NetworkSettings.Networks}}'` — it must list `splunk-dsdl`, not `bridge`. |
+| Model dropdown still empty right after the container comes up | The page cached the pre-ready state. **Hard-reload** (Ctrl+Shift+R); re-Save Setup LLM Integrations if needed. The backend is fine if `curl -sk https://localhost:5000/summary -H "Authorization: Bearer <api_token>"` returns `"token": "valid"`. |
+| *"Error in 'fit' command: MLTKC parameters: {...}"* when running a *Querying LLM* assistant | The image's `llm_utils.py` can't import `llama_index.llms.bedrock`, so the algo won't load. Run **`./poc/mcp/fix_llm_rag_image.sh`** (patches it in the persistent volume), then re-run the inference. In the container log the tell is the algo stopping at `model name:` with no `algo loaded from module` line. |
+| LLM_Result shows *"ERROR at LLM generation: llama-server process has terminated: signal: killed (status code: 500)"* | Ollama OOM: the model's 128K context wants ~14 GB KV cache. Run **`./poc/mcp/fix_llm_rag_image.sh`** (caps `context_window=8192`; or `CTX_CAP=32768 ...` for a bigger window), then re-run. `docker logs ollama` shows *"cannot meet free memory target … abort"*. Raising Docker RAM helps coexistence but won't fit the full 128K alongside Splunk. |
+| Search shows *"terminated unexpectedly"* / *"Some visualizations have not loaded … risky commands"* | Splunk's risky-command guard blocks the `fit` searches the assistant uses. Click **Run Query Anyway** on each prompt (safe in this lab — `fit` runs the model container). To stop the prompts, set `enable_risky_command_check = 0` in Splunk `web.conf` and restart. |
 | Dropdown empty after Save | LLM-RAG container can't reach Ollama. Confirm `curl -s http://localhost:11434/api/tags` works on the host and the URL is `http://host.docker.internal:11434`. |
 | `model not found` | Name in Setup ≠ a pulled model. `docker exec ollama ollama list` and copy the exact tag. |
 | Times out / spins | Raise `max_fit_time` to 7200 and/or use a smaller model; first call is slowest (model loads into RAM). |

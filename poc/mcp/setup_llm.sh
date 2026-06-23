@@ -57,7 +57,8 @@ cat <<EOF
 Done. Ollama is serving "$MODEL" at $OLLAMA_URL.
 
 Next, in the DSDL app (these stay in the UI):
-  1. Configuration -> Container Management : start "Red Hat LLM RAG CPU"
+  1. Configuration -> Container Management : start "Agentic AI"
+       (NOT "Red Hat LLM RAG CPU" :5.2.4 — it crashes on boot, missing langgraph)
   2. Configuration -> Setup LLM Integrations (LLM block):
        LLM Service  = Ollama        Enable Ollama = Yes
        Ollama URL   = http://host.docker.internal:11434
