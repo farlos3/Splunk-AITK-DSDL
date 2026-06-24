@@ -96,7 +96,7 @@ ships the MCP/function-calling stack too.
 >   [`../../docker/.env`](../../docker/.env), then
 >   `docker compose -f docker/docker-compose.yml up -d mltk-dev`). golden's
 >   JupyterLab moves to <https://localhost:8889>; LLM-RAG takes host :5000.
->   ([`../../docs/GUIDE.md` 5.1](../../docs/GUIDE.md#51-bring-up-the-backend) has
+>   ([`../../docs/GUIDE.md` 5.2](../../docs/GUIDE.md#52-bring-up-the-backend) has
 >   the trade-off — fit/apply on :5000 then targets LLM-RAG, not golden.)
 
 > **If Start hangs on "LOADING" and nothing comes up**, DSDL's auto-pull of the
@@ -406,7 +406,7 @@ Treat MCP as the next step after plain chat works.
 …) so the model retrieves relevant documents before answering. It's the heavier
 path — Milvus is its own container stack. Start with LLM Chat / Standalone LLM;
 add RAG only when you specifically want retrieval. Details:
-[`../../docs/GUIDE.md` 5.4](../../docs/GUIDE.md#54-rag-optional).
+[`../../docs/GUIDE.md` 5.5](../../docs/GUIDE.md#55-rag-optional).
 
 ## Troubleshooting
 

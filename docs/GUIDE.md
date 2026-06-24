@@ -46,10 +46,11 @@ you what success looks like before you move on.
    - [4.4 HEC from DSDL](#44-hec-from-dsdl)
    - [4.5 HEC reference & troubleshooting](#45-hec-reference--troubleshooting)
 5. [**LLM Integrations and MCP**](#5-llm-integrations-and-mcp) — local Ollama backend, LLM Chat, and the MCP tool layer
-   - [5.1 Bring up the backend](#51-bring-up-the-backend)
-   - [5.2 Setup LLM Integrations page](#52-setup-llm-integrations-page)
-   - [5.3 Connect MCP — the LLM calls Splunk itself](#53-connect-mcp--the-llm-calls-splunk-itself)
-   - [5.4 RAG (optional)](#54-rag-optional)
+   - [5.1 The DSDL Assistants menu — what each option does](#51-the-dsdl-assistants-menu--what-each-option-does)
+   - [5.2 Bring up the backend](#52-bring-up-the-backend)
+   - [5.3 Setup LLM Integrations page](#53-setup-llm-integrations-page)
+   - [5.4 Connect MCP — the LLM calls Splunk itself](#54-connect-mcp--the-llm-calls-splunk-itself)
+   - [5.5 RAG (optional)](#55-rag-optional)
 6. [**Red-team with MITRE ATLAS**](#6-red-team-with-mitre-atlas) — the lens over both targets
    - [6.1 What ATLAS is & the two targets](#61-what-atlas-is--the-two-targets)
    - [6.2 Attack the classifier — evade](#62-attack-the-classifier--evade)
@@ -431,7 +432,7 @@ Open: **`https://localhost:8888`**  ← **HTTPS, not http**
 > ports — so for model dev you just use `mltk-dev` and don't start a second one.
 > DSDL's `fit/apply` reaches it via the Endpoint URL (`host.docker.internal:5000`)
 > you saved in [2](#2-configure-the-dsdl-setup-page). The one time you *do* start a
-> DSDL container is the **LLM-RAG** image for LLM Chat ([5.1](#51-bring-up-the-backend));
+> DSDL container is the **LLM-RAG** image for LLM Chat ([5.2](#52-bring-up-the-backend));
 > because it needs the same slot, you either stop `mltk-dev` first or remap its
 > host ports (the URLs above shift accordingly — e.g. JupyterLab → `:8889`).
 
@@ -826,12 +827,12 @@ reference.
 Splunk DSDL assistants ──► LLM-RAG container ──► ollama (this repo) ──► llama3.2:3b
                            (started from DSDL UI)    host.docker.internal:11434
                                   │
-                                  └─► MCP ──► Splunk as a tool (5.3)
+                                  └─► MCP ──► Splunk as a tool (5.4)
 ```
 
-> **How the parts relate:** plain **LLM Chat works on its own** (5.1–5.2) — it
-> reads the rows you paste in. **MCP is not a separate feature** (5.3): it's an
-> add-on that lets the *same* LLM fetch its own data by calling Splunk. RAG (5.4)
+> **How the parts relate:** plain **LLM Chat works on its own** (5.2–5.3) — it
+> reads the rows you paste in. **MCP is not a separate feature** (5.4): it's an
+> add-on that lets the *same* LLM fetch its own data by calling Splunk. RAG (5.5)
 > is the optional heavy path. You red-team this whole assistant — the LLM target —
 > in [6.4](#64-attack-the-llm--mcp-assistant).
 
@@ -839,17 +840,61 @@ Splunk DSDL assistants ──► LLM-RAG container ──► ollama (this repo) 
 
 | Path | What it is | You control | Start at |
 |---|---|---|---|
-| **A — GUI assistants** | Splunk's **LLM Chat** / **LLM with Function Calling** | run a search, pick a model, ask — DSDL owns the system prompt and how rows become context | 5.1–5.3, then [`../poc/mcp/README.md`](../poc/mcp/README.md) examples |
+| **A — GUI assistants** | Splunk's **LLM Chat** / **LLM with Function Calling** | run a search, pick a model, ask — DSDL owns the system prompt and how rows become context | 5.2–5.4, then [`../poc/mcp/README.md`](../poc/mcp/README.md) examples |
 | **B — custom in JupyterLab** | your own Python in the DSDL golden container ([3](#3-develop-models-in-jupyterlab)) | *everything* — system prompt, context shaping, temperature, JSON output, multi-turn, your own RAG, even the provider | [`../poc/mcp/README.md` "Write it yourself"](../poc/mcp/README.md#write-it-yourself-in-jupyterlab-full-control) |
 
-Path A is the fast start. **MCP (5.3) belongs to Path A** — it's how the *GUI*
+Path A is the fast start. **MCP (5.4) belongs to Path A** — it's how the *GUI*
 assistant gets tool use. Path B is the escape hatch when the assistant's fixed
 behaviour gets in the way: there you *are* the glue, calling Ollama and Splunk
 from code via the [3](#3-develop-models-in-jupyterlab) dev loop. Path B needs only
-**Ollama up** (5.1) — it talks to it directly from the notebook, **skipping the
-Setup page (5.2) and MCP (5.3)**, which exist for the GUI assistants.
+**Ollama up** (5.2) — it talks to it directly from the notebook, **skipping the
+Setup page (5.3) and MCP (5.4)**, which exist for the GUI assistants.
 
-## 5.1 Bring up the backend
+## 5.1 The DSDL Assistants menu — what each option does
+
+Before configuring anything, here's the map. DSDL's **Assistants** menu groups the
+LLM/RAG dashboards into three families. This lab mainly uses **LLM Chat** (and
+optionally **LLM with Function Calling** once MCP is on); the rest are the fuller
+RAG toolchain. Descriptions follow Splunk's official DSDL 5.2 docs.
+
+**Interactive Log Analysis** — the main event for this lab:
+
+| Option | Menu path | What it does |
+|---|---|---|
+| **LLM Chat** *(DSDL 5.2.3+)* | Interactive Log Analysis → LLM Chat | Multi-turn chat over the rows your SPL returns: a search bar adds results to the chat history, then you ask the LLM about them — built for troubleshooting / root-cause. The assistant [5.3](#53-setup-llm-integrations-page) and [`../poc/mcp/README.md`](../poc/mcp/README.md) use. |
+
+**Querying LLM** — ask a model, with increasing grounding:
+
+| Option | Menu path | What it does |
+|---|---|---|
+| **Standalone LLM** | LLM-RAG → Querying LLM → Standalone LLM | Zero-shot Q&A / NLP (classify, summarize) on text in Splunk — **no external knowledge**. Feed a `text` field + a prompt. Best **first sanity check**. |
+| **RAG-based LLM** | LLM-RAG → Querying LLM → RAG-based LLM | Answers using the **knowledge encoded in the vector database** (retrieval-augmented; needs Embedding + Milvus, [5.5](#55-rag-optional)). |
+| **LLM with Function Calling** | LLM-RAG → Querying LLM → LLM with Function Calling | **Agentic**: the LLM runs predefined tools (Python — querying Splunk indexes or the vectorDB) before answering. What **MCP** powers ([5.4](#54-connect-mcp--the-llm-calls-splunk-itself)). |
+| **Local LLM and Embedding Management** | LLM-RAG → Querying LLM → Local LLM and Embedding Management | List, pull, and delete local Ollama LLM + embedding models from the UI — the UI equivalent of `ollama pull` ([5.2](#52-bring-up-the-backend)). |
+
+**Encoding Data to Vector Database** — build the knowledge base in **Milvus** that RAG retrieves from:
+
+| Option | Menu path | What it does |
+|---|---|---|
+| **Encode documents** | Encoding Data to Vector Database → Encode documents | Encode arbitrary documents (e.g. a knowledge base) into vectors, used as extra context when prompting — the basis of document-based RAG. |
+| **Encode data from Splunk** | …→ Encode data from Splunk | Encode Splunk machine data / search results into a vector collection (the "Standalone VectorDB" use case). |
+| **Conduct Vector Search** | …→ Conduct Vector Search | Run a similarity (cosine) search over the encoded vectors / logs. |
+| **Manage and Explore Milvus vector database** | …→ Manage and Explore Milvus vector database | List, inspect, and manage your Milvus collections. |
+
+> **Under the hood (official architecture):** **Ollama** serves the local LLM,
+> **Milvus** is the vector DB, and the **DSDL container** uses the **LlamaIndex**
+> framework to orchestrate the two for RAG. Sources:
+> [About LLM-RAG](https://docs.splunk.com/Documentation/DSDL/latest/User/AboutLLMRAG) ·
+> [LLM-RAG use cases](https://docs.splunk.com/Documentation/DSDL/latest/User/UseCasesLLMRAG) ·
+> [Use Standalone LLM](https://docs.splunk.com/Documentation/DSDL/5.2.2/User/UseStandaloneLLM) ·
+> [What's new in DSDL 5.2](https://www.splunk.com/en_us/blog/artificial-intelligence/what-s-new-in-splunk-dsdl-5-2-llm-rag-functionalities-and-use-cases.html) ·
+> [LLM-powered Chat UI in DSDL](https://www.splunk.com/en_us/blog/artificial-intelligence/talk-to-your-logs-llm-powered-chat-ui-in-dsdl.html)
+
+The rest of this section wires the **backend** (5.2) and the **Setup page** (5.3)
+so these assistants light up; **MCP** (5.4) and **RAG** (5.5) are the optional
+upgrades.
+
+## 5.2 Bring up the backend
 
 - **Ollama** — provided by this repo as a compose service
   ([`../docker/docker-compose.yml`](../docker/docker-compose.yml); host port
@@ -904,7 +949,7 @@ Setup page (5.2) and MCP (5.3)**, which exist for the GUI assistants.
       `8192` (default, ~0.9 GB) or `32768` (~3.5 GB) is the right call; more Docker
       RAM helps the containers coexist but won't make the full window practical.
 
-## 5.2 Setup LLM Integrations page
+## 5.3 Setup LLM Integrations page
 
 **Configuration → Setup LLM Integrations**, **LLM** block (the only block LLM
 Chat needs — the rest are for RAG):
@@ -929,21 +974,12 @@ key instead of the Ollama URL.
 > after the container comes up, **hard-reload** the page (the UI caches the
 > pre-ready state).
 
-At this point you have the **standalone local LLM**. The LLM features sit under
-**two** Assistants menus:
+At this point you have the **standalone local LLM**. The full menu of assistants
+is mapped in [5.1](#51-the-dsdl-assistants-menu--what-each-option-does) — start
+with **Standalone LLM** to confirm the path, then **LLM Chat**. Worked examples on
+BOTSv1 are in [`../poc/mcp/README.md`](../poc/mcp/README.md).
 
-| Assistant | Menu path | What it does |
-|---|---|---|
-| **LLM Chat** | **Interactive Log Analysis → LLM Chat** | Multi-turn chat over the rows your SPL returns — the main event |
-| **Standalone LLM** | **LLM-RAG → Querying LLM → Standalone LLM** | One-shot prompt; optionally feed Splunk data via a field named `text`. No retrieval — best first sanity check |
-| **RAG-based LLM** | **LLM-RAG → Querying LLM → RAG-based LLM** | Retrieval-augmented: embed query → fetch from Vector DB → answer (needs Embedding + Milvus, [5.4](#54-rag-optional)) |
-| **LLM with Function Calling** | **LLM-RAG → Querying LLM → LLM with Function Calling** | Agentic: the LLM calls Splunk as a tool via MCP ([5.3](#53-connect-mcp--the-llm-calls-splunk-itself)) |
-| **Local LLM and Embedding Management** | **LLM-RAG → Querying LLM → Local LLM and Embedding Management** | List / pull / remove local Ollama LLM + embedding models from the UI |
-
-Start with **Standalone LLM** to confirm the path, then **LLM Chat**. Worked
-examples on BOTSv1 are in [`../poc/mcp/README.md`](../poc/mcp/README.md).
-
-## 5.3 Connect MCP — the LLM calls Splunk itself
+## 5.4 Connect MCP — the LLM calls Splunk itself
 
 This is the step that makes the assistant **agentic**. Plain LLM Chat only sees
 the rows *you* paste in; with **MCP** ([Model Context
@@ -953,7 +989,7 @@ as a tool** — run its own searches, look things up — which is what powers th
 Chat is this connection.
 
 - MCP is **independent of the LLM backend** — `DISCONNECTED` does **not** block
-  plain chat (5.1–5.2 work without it); you just don't get tool use.
+  plain chat (5.2–5.3 work without it); you just don't get tool use.
 - Connecting it needs a reachable **Splunk MCP server** endpoint configured in the
   DSDL app. The exact field has moved between DSDL releases, so check your
   version's *Setup* / *LLM with Function Calling* page.
@@ -963,7 +999,7 @@ real tools is exactly what makes [6.4](#64-attack-the-llm--mcp-assistant)'s
 **plugin-compromise** attack possible, so keep any MCP tools **least-privilege /
 read-only**.
 
-## 5.4 RAG (optional)
+## 5.5 RAG (optional)
 
 **RAG-based LLM** adds an **Embedding model** (default in-container HuggingFace
 `all-MiniLM-L6-v2`, or Ollama) and a **Vector DB** (Milvus, Pinecone, …) so the
