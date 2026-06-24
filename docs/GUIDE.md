@@ -126,7 +126,13 @@ Network:  splunk-dsdl
 
 ## 1.2 Prerequisites
 
-- **Docker Desktop** running, Linux-containers / WSL2 backend.
+- **Docker Desktop** running. **Windows:** Linux-containers / WSL2 backend, drive
+  the scripts from **Git Bash**. **macOS:** works as-is from the normal shell — the
+  images are `linux/amd64`, so on **Apple Silicon** they run under emulation
+  (enable Docker Desktop → *Use Rosetta*; details in
+  [3.7](#37-customize-the-container-image-add-python-libs) and
+  [`../docker/custom-image/README.md`](../docker/custom-image/README.md)). Intel
+  Macs run them natively.
 - **~35–40 GB free disk** (Splunk image + golden image + BOTSv1 download &
   extract + volumes).
 - **8 GB+ free RAM** while the golden container runs.
@@ -621,9 +627,10 @@ round trip keep working. Your notebooks and trained models live in the
 [`docker/custom-image/README.md`](../docker/custom-image/README.md)):
 
 - **Plain published image, no build:** `./setup.sh --golden-image splunk/mltk-container-golden-cpu:5.2.3`.
-- **GPU:** build on a GPU base
-  (`BASE=splunk/mltk-container-golden-gpu:5.2.3 ./docker/custom-image/build.sh`) plus
-  a `deploy.resources` GPU reservation on `mltk-dev` (needs an NVIDIA GPU).
+- **GPU:** Ollama uses an NVIDIA GPU **automatically** (`setup.sh` detects it;
+  `--no-gpu`/`--gpu` to force) — the DGA model stays CPU. Full how-to (golden GPU
+  base, prerequisites, verify) in
+  [`docker/custom-image/README.md` → GPU](../docker/custom-image/README.md#gpu).
 - **Deep customization** (different base / conda / RAPIDS): Splunk's upstream
   [`splunk-mltk-container-docker`](https://github.com/splunk/splunk-mltk-container-docker)
   `build.sh`, then point `GOLDEN_IMAGE` at your tag.
@@ -945,6 +952,12 @@ upgrades.
   docker compose -f docker/docker-compose.yml up -d ollama
   docker exec ollama ollama pull llama3.2:3b   # ~2 GB, CPU-friendly
   ```
+  > Ollama uses your **NVIDIA GPU automatically** when present — `setup.sh` /
+  > `setup_llm.sh` detect it and add
+  > [`../docker/docker-compose.gpu.yml`](../docker/docker-compose.gpu.yml)
+  > (`--no-gpu` / `GPU=0` to force CPU). The bare `up -d ollama` above is CPU-only;
+  > prefer the helper, or append `-f docker/docker-compose.gpu.yml`. Details:
+  > [`../docker/custom-image/README.md` → GPU](../docker/custom-image/README.md#gpu).
 - **LLM-RAG container** — DSDL's own image, repo `splunk/mltk-container-ubi-llm-rag`.
   Start it from **Configuration → Container Management** — pick **"Agentic AI"**
   (`:agentic-ai-5.2.4`), *not* "Red Hat LLM RAG CPU" (see the crash note below).

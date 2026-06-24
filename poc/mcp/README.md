@@ -58,6 +58,11 @@ the service, waits for the API, pulls the model, and smoke-tests it:
 ./poc/mcp/setup_llm.sh llama3.1:8b     # or pick another model
 ```
 
+> `setup_llm.sh` uses your **NVIDIA GPU automatically** when present (`GPU=0` to
+> force CPU). The "by hand" `up -d ollama` below is CPU-only — add
+> `-f docker/docker-compose.gpu.yml` to use the GPU. Details:
+> [`../../docker/custom-image/README.md` → GPU](../../docker/custom-image/README.md#gpu).
+
 Or do it by hand:
 
 ```bash

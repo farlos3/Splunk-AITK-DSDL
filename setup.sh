@@ -14,7 +14,8 @@
 #   4b. populates this project's OWN BOTSv1 volume — uses bots-data/botsv1/
 #       if present, else downloads the ~6 GB .tgz here (self-contained; never
 #       reads from Splunk-Environment-Lab). Skip with --skip-bots.
-#   5. brings Splunk up and waits for healthy
+#   5. auto-detects an NVIDIA GPU (Ollama uses it; force with --gpu / --no-gpu),
+#      brings Splunk + Ollama up, and waits for healthy
 #   6. prints the exact values to enter on the DSDL Setup page
 #
 # Usage:
@@ -24,6 +25,7 @@
 #   ./setup.sh --skip-download             # use a .tgz already in bots-data/botsv1/
 #   ./setup.sh --url-v1 https://.../botsv1_data_set.tgz
 #   ./setup.sh --golden-image splunk/mltk-container-golden-cpu:5.2.3 --force
+#   ./setup.sh --no-gpu                    # force Ollama onto CPU even with a GPU
 
 set -euo pipefail
 
@@ -40,6 +42,7 @@ SKIP_PULL=0
 SKIP_BOTS=0
 SKIP_DOWNLOAD=0
 FORCE=0
+FORCE_GPU=""        # "", "1" (--gpu), or "0" (--no-gpu); empty = auto-detect
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -50,13 +53,16 @@ while [ $# -gt 0 ]; do
         --skip-bots)     SKIP_BOTS=1; shift ;;
         --skip-download) SKIP_DOWNLOAD=1; shift ;;
         --force)         FORCE=1; shift ;;
-        -h|--help)       sed -n '2,22p' "$0"; exit 0 ;;
+        --gpu)           FORCE_GPU=1; shift ;;
+        --no-gpu)        FORCE_GPU=0; shift ;;
+        -h|--help)       sed -n '2,28p' "$0"; exit 0 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
+GPU_COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.gpu.yml"
 CUSTOM_IMAGE_DIR="$REPO_ROOT/docker/custom-image"
 APPS_DIR="$REPO_ROOT/splunk-apps"
 ENV_FILE="$REPO_ROOT/docker/.env"
@@ -84,6 +90,24 @@ step "Pre-flight checks"
 command -v docker >/dev/null 2>&1 || die "'docker' not found on PATH."
 docker info >/dev/null 2>&1 || die "Docker daemon not reachable. Start Docker Desktop / dockerd and re-run."
 info "docker daemon reachable"
+
+# Detect an NVIDIA GPU so Ollama can use it (layers in docker-compose.gpu.yml).
+# Macs / GPU-less hosts skip it and Ollama runs on CPU. Force with --gpu / --no-gpu.
+USE_GPU=0
+if [ "$FORCE_GPU" = "1" ]; then
+    USE_GPU=1
+elif [ "$FORCE_GPU" = "0" ]; then
+    USE_GPU=0
+elif docker run --rm --gpus all alpine true >/dev/null 2>&1; then
+    USE_GPU=1
+fi
+COMPOSE=("${COMPOSE[@]}")
+if [ "$USE_GPU" -eq 1 ]; then
+    COMPOSE+=(-f "$(to_winpath "$GPU_COMPOSE_FILE")")
+    info "GPU: enabled for Ollama (NVIDIA detected)"
+else
+    info "GPU: off — Ollama on CPU (no NVIDIA GPU detected; pass --gpu to force)"
+fi
 
 # --- 2. Discover the three Splunkbase packages -----------------------------
 # Splunkbase filenames are versioned, so match by pattern. PSC is
@@ -227,7 +251,7 @@ else
 
     if bots_volume_has_data && [ "$FORCE" -eq 1 ]; then
         info "wiping volume (--force)"
-        docker compose -f "$(to_winpath "$COMPOSE_FILE")" down >/dev/null 2>&1 || true
+        "${COMPOSE[@]}" down >/dev/null 2>&1 || true
         docker volume rm "$BOTS_VOLUME" >/dev/null 2>&1 || true
     fi
 
@@ -249,9 +273,9 @@ if docker inspect "$CONTAINER" >/dev/null 2>&1; then
     fi
 fi
 if [ "$FORCE" -eq 1 ]; then
-    docker compose -f "$(to_winpath "$COMPOSE_FILE")" up -d --force-recreate
+    "${COMPOSE[@]}" up -d --force-recreate
 else
-    docker compose -f "$(to_winpath "$COMPOSE_FILE")" up -d
+    "${COMPOSE[@]}" up -d
 fi
 
 # --- 6. Wait for healthy ---------------------------------------------------

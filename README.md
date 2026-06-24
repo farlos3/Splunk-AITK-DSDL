@@ -114,12 +114,14 @@ Full walkthrough with success-checks and troubleshooting is in
    and starts Splunk + the `mltk-dev` container:
 
    ```bash
-   ./setup.sh         # first run; flags: --skip-pull --golden-image <tag> --skip-bots --skip-download --force
+   ./setup.sh         # flags: --skip-pull --golden-image <tag> --no-gpu --skip-bots --skip-download --force
    ```
 
    The dev image is built locally so you can add Python libs later (edit
    `docker/custom-image/requirements.extra.txt` → rebuild); pass
-   `--golden-image <tag>` to use a plain published image instead.
+   `--golden-image <tag>` to use a plain published image instead. **Ollama uses an
+   NVIDIA GPU automatically** when present (Mac / no-GPU run CPU; `--no-gpu` to
+   force) — see [`docker/custom-image/README.md` → GPU](docker/custom-image/README.md#gpu).
 
    Then open <http://localhost:8000> — `admin` / password from `docker/.env`
    (default `p@ssw0rd`). → [Guide 1.4](docs/GUIDE.md#14-run-the-setup-script)

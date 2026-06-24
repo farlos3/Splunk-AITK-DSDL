@@ -154,8 +154,14 @@ services:
   #
   # After `docker compose up`, pull a model (small = fast on CPU):
   #   docker exec ollama ollama pull llama3.2:3b
-  # CPU-only by default; works everywhere. For GPU, add a `deploy.resources`
-  # reservation — not needed for the POC.
+  # GPU: the ollama image ships CUDA and is given the GPU AUTOMATICALLY when an
+  # NVIDIA GPU is present — setup.sh / poc/mcp/setup_llm.sh detect it and layer in
+  # docker-compose.gpu.yml (which adds the device reservation to this service). The
+  # base file stays CPU-safe so Macs / GPU-less hosts still `up` fine. Manual / verify:
+  #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up -d ollama
+  #   docker exec ollama nvidia-smi
+  # Needs Docker GPU access (Windows: WSL2 + NVIDIA Container Toolkit). Full how-to:
+  # docker/custom-image/README.md "GPU".
   ollama:
     image: ollama/ollama:latest
     container_name: ollama

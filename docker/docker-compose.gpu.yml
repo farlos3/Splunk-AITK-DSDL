@@ -1,0 +1,25 @@
+# GPU override for the ollama service — merged on top of docker-compose.yml.
+#
+# Kept in a SEPARATE file on purpose: a GPU device reservation in the base compose
+# would make `docker compose up` FAIL on hosts without an NVIDIA runtime (Macs,
+# GPU-less machines) with "could not select device driver nvidia". So the base
+# stays CPU-safe and runs everywhere; this override is layered in ONLY when an
+# NVIDIA GPU is present.
+#
+# setup.sh (and poc/mcp/setup_llm.sh) auto-detect the GPU and add this file for you.
+# To do it by hand:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.gpu.yml up -d ollama
+#   docker exec ollama nvidia-smi      # should list your GPU
+#
+# Requires a real NVIDIA GPU + Docker GPU access (Windows: WSL2 + NVIDIA Container
+# Toolkit). Only the ollama service gets a GPU here — the DGA model (mltk-dev) is
+# tiny and stays on CPU; see docker/custom-image/README.md "GPU (optional)".
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

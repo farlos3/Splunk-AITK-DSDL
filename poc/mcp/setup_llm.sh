@@ -11,6 +11,7 @@
 #   ./poc/mcp/setup_llm.sh                 # pull the default model (llama3.2:3b)
 #   ./poc/mcp/setup_llm.sh llama3.1:8b     # pull a different model
 #   MODEL=llama3.1:8b ./poc/mcp/setup_llm.sh
+#   GPU=0 ./poc/mcp/setup_llm.sh           # force CPU (default: auto-detect NVIDIA GPU)
 
 set -euo pipefail
 
@@ -28,8 +29,20 @@ OLLAMA_URL="http://localhost:11434"
 echo "==> Checking Docker is running"
 docker info >/dev/null 2>&1 || { echo "ERROR: Docker isn't reachable. Start Docker Desktop and retry."; exit 1; }
 
+# Use the NVIDIA GPU for Ollama when available (layers in docker-compose.gpu.yml).
+# Auto-detected; force with GPU=1 / GPU=0. Macs / GPU-less hosts run on CPU.
+COMPOSE_ARGS=(-f docker/docker-compose.yml)
+USE_GPU="${GPU:-}"
+[ -z "$USE_GPU" ] && { docker run --rm --gpus all alpine true >/dev/null 2>&1 && USE_GPU=1 || USE_GPU=0; }
+if [ "$USE_GPU" = "1" ]; then
+    COMPOSE_ARGS+=(-f docker/docker-compose.gpu.yml)
+    echo "    GPU: enabled for Ollama (NVIDIA)"
+else
+    echo "    GPU: off — Ollama on CPU"
+fi
+
 echo "==> Starting the ollama service"
-docker compose -f docker/docker-compose.yml up -d ollama
+docker compose "${COMPOSE_ARGS[@]}" up -d ollama
 
 echo "==> Waiting for the Ollama API on $OLLAMA_URL"
 for i in $(seq 1 30); do
