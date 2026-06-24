@@ -1,0 +1,14 @@
+# Extra Python packages baked into this lab's custom DSDL container.
+#
+# Add one pip requirement per line, then rebuild:  ./build.sh
+# (then recreate the dev container:  docker compose -f docker/docker-compose.yml up -d --force-recreate mltk-dev)
+#
+# The base golden image already ships TensorFlow, PyTorch, pandas, scikit-learn,
+# JupyterLab, etc. — only list what's MISSING. Pin versions for reproducibility.
+#
+# Examples (uncomment / edit as needed):
+# tabulate
+# xgboost==2.1.1
+# tld
+#
+# Leave this file with no active requirements and the build is a no-op layer.

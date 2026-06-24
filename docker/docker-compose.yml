@@ -111,7 +111,13 @@ services:
   #       container takes host :5000. Caveat: in (b) DSDL's :5000 endpoint now
   #       points at LLM-RAG, so MLTKContainer fit/apply (e.g. the DGA POC) won't
   #       reach golden until golden is back on host :5000.
-  # See docs/GUIDE.md 5.1 and poc/mcp/README.md Step 2 for the full walkthrough.
+  # See docs/GUIDE.md 5.2 and poc/mcp/README.md Step 2 for the full walkthrough.
+  #
+  # IMAGE: GOLDEN_IMAGE defaults (via setup.sh / docker/.env) to this lab's
+  # locally-built custom image splunkaitk/mltk-container-custom:local — the golden
+  # base + your extra libs (docker/custom-image/). The fallback below is the
+  # pullable golden, used only if GOLDEN_IMAGE is unset (e.g. a compose run that
+  # bypassed setup.sh).
   mltk-dev:
     image: ${GOLDEN_IMAGE:-splunk/mltk-container-golden-cpu:5.2.3}
     platform: linux/amd64

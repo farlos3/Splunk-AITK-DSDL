@@ -109,12 +109,17 @@ Full walkthrough with success-checks and troubleshooting is in
    in [`splunk-apps/README.md`](splunk-apps/README.md).
    → [Guide 1.3](docs/GUIDE.md#13-stage-the-three-splunk-apps)
 
-2. **Bring it up** from the repo root — installs the apps, loads BOTSv1, and
-   starts Splunk + the `mltk-dev` golden container:
+2. **Bring it up** from the repo root — installs the apps, loads BOTSv1, **builds
+   this lab's custom DSDL image** ([`docker/custom-image/`](docker/custom-image/README.md)),
+   and starts Splunk + the `mltk-dev` container:
 
    ```bash
-   ./setup.sh         # first run; flags: --skip-pull --skip-bots --skip-download --force
+   ./setup.sh         # first run; flags: --skip-pull --golden-image <tag> --skip-bots --skip-download --force
    ```
+
+   The dev image is built locally so you can add Python libs later (edit
+   `docker/custom-image/requirements.extra.txt` → rebuild); pass
+   `--golden-image <tag>` to use a plain published image instead.
 
    Then open <http://localhost:8000> — `admin` / password from `docker/.env`
    (default `p@ssw0rd`). → [Guide 1.4](docs/GUIDE.md#14-run-the-setup-script)
@@ -171,10 +176,11 @@ Full walkthrough with success-checks and troubleshooting is in
 
 ```
 Splunk-AITK-DSDL/
-├── setup.sh                    ← apps + BOTSv1 volume + golden image + up + wait healthy
+├── setup.sh                    ← apps + BOTSv1 volume + build custom image + up + wait healthy
 ├── docker/
-│   ├── docker-compose.yml      ← splunk + docker-proxy + mltk-dev; named volumes/network
+│   ├── docker-compose.yml      ← splunk + docker-proxy + mltk-dev + ollama; named volumes/network
 │   ├── .env.example            ← template for the generated docker/.env
+│   ├── custom-image/           ← BUILD: this lab's mltk-dev image (golden + your extra libs)
 │   └── reset.sh                ← nuke container + state; --full also wipes BOTSv1
 ├── docs/
 │   ├── GUIDE.md                ← one handbook: setup → DSDL → JupyterLab → HEC (start here)

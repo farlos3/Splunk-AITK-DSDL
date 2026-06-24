@@ -8,7 +8,9 @@
 #   2. discovers the PSC add-on + AITK/MLTK app + DSDL app in splunk-apps/
 #   3. writes docker/.env so Splunk auto-installs them (PSC -> MLTK -> DSDL)
 #      at first boot via SPLUNK_APPS_URL
-#   4. pre-pulls the DSDL "golden image" container (skip with --skip-pull)
+#   4. builds this lab's CUSTOM DSDL image (docker/custom-image/ — golden base +
+#      your extra libs) and points GOLDEN_IMAGE at it; with --golden-image <tag>
+#      it pulls that published image instead (skip the build/pull with --skip-pull)
 #   4b. populates this project's OWN BOTSv1 volume — uses bots-data/botsv1/
 #       if present, else downloads the ~6 GB .tgz here (self-contained; never
 #       reads from Splunk-Environment-Lab). Skip with --skip-bots.
@@ -30,7 +32,9 @@ export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL='*'
 
 PASSWORD="p@ssw0rd"
-GOLDEN_IMAGE="splunk/mltk-container-golden-cpu:5.2.3"
+GOLDEN_IMAGE="splunk/mltk-container-golden-cpu:5.2.3"   # base for the build / pull target
+CUSTOM_IMAGE="splunkaitk/mltk-container-custom:local"   # locally-built default image
+BUILD_CUSTOM=1                                          # 0 when --golden-image is given
 BOTS_URL="https://s3.amazonaws.com/botsdataset/botsv1/splunk-pre-indexed/botsv1_data_set.tgz"
 SKIP_PULL=0
 SKIP_BOTS=0
@@ -40,7 +44,7 @@ FORCE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --password)      PASSWORD="$2"; shift 2 ;;
-        --golden-image)  GOLDEN_IMAGE="$2"; shift 2 ;;
+        --golden-image)  GOLDEN_IMAGE="$2"; BUILD_CUSTOM=0; shift 2 ;;
         --url-v1)        BOTS_URL="$2"; shift 2 ;;
         --skip-pull)     SKIP_PULL=1; shift ;;
         --skip-bots)     SKIP_BOTS=1; shift ;;
@@ -53,11 +57,16 @@ done
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
+CUSTOM_IMAGE_DIR="$REPO_ROOT/docker/custom-image"
 APPS_DIR="$REPO_ROOT/splunk-apps"
 ENV_FILE="$REPO_ROOT/docker/.env"
 CONTAINER="splunk-aitk"
 BOTS_VOLUME="splunkaitk_splunk-botsv1"
 SPLUNK_UID=41812
+
+# Which image mltk-dev runs: the locally-built custom image by default, or the
+# published tag from --golden-image. Persisted into docker/.env below.
+if [ "$BUILD_CUSTOM" -eq 1 ]; then IMAGE_TO_RUN="$CUSTOM_IMAGE"; else IMAGE_TO_RUN="$GOLDEN_IMAGE"; fi
 
 step() { echo; echo "==> $*"; }
 info() { echo "    $*"; }
@@ -148,19 +157,32 @@ cat > "$ENV_FILE" <<EOF
 SPLUNK_PASSWORD=$PASSWORD
 SPLUNK_HEC_TOKEN=aitk-hec-token-CHANGE-ME
 SPLUNK_APPS_URL=$APPS_URL
-GOLDEN_IMAGE=$GOLDEN_IMAGE
+GOLDEN_IMAGE=$IMAGE_TO_RUN
 MLTK_DEV_API_PORT=5001
 MLTK_DEV_JUPYTER_PORT=8889
 MLTK_DEV_TB_PORT=6007
 EOF
 info "SPLUNK_APPS_URL=$APPS_URL"
 
-# --- 4. Pre-pull the DSDL golden image -------------------------------------
-if [ "$SKIP_PULL" -eq 1 ]; then
-    info "Skipping golden-image pull (--skip-pull)."
+# --- 4. Prepare the dev-container image ------------------------------------
+# Default: build this lab's custom image (docker/custom-image/) — the golden base
+# plus your extra libs (requirements.extra.txt) — and run mltk-dev from it. With
+# --golden-image <tag>, pull that published image directly instead.
+if [ "$BUILD_CUSTOM" -eq 1 ]; then
+    if [ "$SKIP_PULL" -eq 1 ]; then
+        info "Skipping custom-image build (--skip-pull). mltk-dev expects $CUSTOM_IMAGE to exist already."
+    else
+        step "Building custom DSDL image: $CUSTOM_IMAGE (FROM $GOLDEN_IMAGE, one-time)"
+        BASE="$GOLDEN_IMAGE" TAG="$CUSTOM_IMAGE" bash "$CUSTOM_IMAGE_DIR/build.sh" \
+            || die "custom image build failed. Fix docker/custom-image/, build it manually, or use --golden-image <tag>."
+    fi
 else
-    step "Pulling DSDL golden image: $GOLDEN_IMAGE (a few GB, one-time)"
-    docker pull "$GOLDEN_IMAGE" || info "WARNING: pull failed — DSDL can pull it later. Continuing."
+    if [ "$SKIP_PULL" -eq 1 ]; then
+        info "Skipping image pull (--skip-pull)."
+    else
+        step "Pulling DSDL image: $GOLDEN_IMAGE (a few GB, one-time)"
+        docker pull "$GOLDEN_IMAGE" || info "WARNING: pull failed — DSDL can pull it later. Continuing."
+    fi
 fi
 
 # --- 4b. Populate this project's OWN BOTSv1 volume -------------------------
@@ -267,8 +289,10 @@ cat <<EOF
   Username : admin
   Password : $PASSWORD
 
-The compose file also starts the golden container as `mltk-dry2`, so Docker
-Desktop should show it under the same `splunkaitk` stack.
+The compose file also starts the dev container as \`mltk-dev\` (image
+$IMAGE_TO_RUN), so Docker Desktop should show it under the same \`splunkaitk\` stack.
+Add/remove Python libs in docker/custom-image/requirements.extra.txt and rebuild
+(docker/custom-image/build.sh) — see docker/custom-image/README.md.
 
 Next: open DSDL -> Configuration -> Setup and enter (Docker mode):
   Container Environment : Docker
@@ -281,5 +305,5 @@ Next: open DSDL -> Configuration -> Setup and enter (Docker mode):
 Then DSDL -> Containers -> confirm the golden-image container is running and
 open JupyterLab.
 
-DGA detection POC walkthrough (botsv1 DNS): see dga/README.md
+DGA detection POC walkthrough (botsv1 DNS): see poc/dga/README.md
 EOF
