@@ -101,7 +101,7 @@ elif [ "$FORCE_GPU" = "0" ]; then
 elif docker run --rm --gpus all alpine true >/dev/null 2>&1; then
     USE_GPU=1
 fi
-COMPOSE=("${COMPOSE[@]}")
+COMPOSE=(docker compose -f "$(to_winpath "$COMPOSE_FILE")")
 if [ "$USE_GPU" -eq 1 ]; then
     COMPOSE+=(-f "$(to_winpath "$GPU_COMPOSE_FILE")")
     info "GPU: enabled for Ollama (NVIDIA detected)"
